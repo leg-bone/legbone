@@ -1,0 +1,41 @@
+<html lang="en" dir="ltr" class=""><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+
+
+
+  </head>
+  <body>
+<header>
+  <div class="container">
+    <div id="title">
+      <h1>response to John Berger's Ways of Seeing</h1>
+    </div>
+    <nav>
+
+
+
+
+    </nav>
+  </div>
+</header>
+
+<section id="showcase">
+  <div class="container">
+
+    <p>people make art that influences people that make art...</p>
+  </div>
+</section>
+  <section id="boxes">
+    <div class="container">
+      <div class="box">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Lemniscate_of_Bernoulli.svg/1200px-Lemniscate_of_Bernoulli.svg.png">
+
+      </div>
+
+
+    </div>
+  </section>
+
+
+</body></html>
