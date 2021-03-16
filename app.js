@@ -20,16 +20,16 @@ function init(){
 
 // renderer
 
-renderer = new THREE.WebGlRenderer({antialias:true});
+renderer = new THREE.WebGlRenderer({antialias:true, alpha: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 
 container.appendChild(renderer.domElement);
 
   // load model
-  let loader = new THREE.FBXLoader();
-  loader.load('./borfusHTML.fbx', function(fbx)){
-    scene.add(fbx.scene);
+  let loader = new THREE.GLTFLoader();
+  loader.load('./borfustexHTML.gltf', function(gltf)){
+    scene.add(gltf.scene);
     renderer.render(scene, camera);
   });
 
