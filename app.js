@@ -14,7 +14,7 @@ function init(){
   const near = .001;
   const far = 100000;
 // camera setup
-  camera = mew THREE.PerspectiveCamera(fov,aspect,near,far);
+  camera = new THREE.PerspectiveCamera(fov,aspect,near,far);
 
   camera.position.set(-50, 40, 350);
 
