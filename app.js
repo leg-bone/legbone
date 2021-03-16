@@ -28,10 +28,12 @@ container.appendChild(renderer.domElement);
 
   // load model
   let loader = new THREE.GLTFLoader();
-  loader.load('./borfustexHTML.gltf', function(gltf)){
+  loader.load("./borfustexHTML.gltf", function(gltf) {
     scene.add(gltf.scene);
     renderer.render(scene, camera);
   });
 
 
 }
+
+init();
