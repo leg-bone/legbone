@@ -32,7 +32,7 @@ header{
   background:#8a2be2;
   color:#FFFFFF;
   padding-top:44px;
-  min-height:82px;
+  min-height:44px;
 
 }
 
@@ -84,7 +84,7 @@ header a:active{
 #showcase{
   text-decoration:underline;
     text-decoration-color: #000000;
-  min-height: 400px;
+  min-height: 200px;
   background:url('../img/showcase.jpg') no-repeat;
   text-align:center;
   color:#FFFFFF;
