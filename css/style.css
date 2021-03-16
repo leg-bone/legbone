@@ -145,6 +145,12 @@ video{
   font-style:oblique;
   font-size:20px;
 }
+.scene,
+canvas{
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
 
 /*media q*/
 @media(max-width: 768px){
