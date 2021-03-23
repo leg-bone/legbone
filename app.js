@@ -4,7 +4,7 @@ let container;
 let camera;
 let renderer;
 let scene;
-let house;
+let obj;
 
 function init() {
   container = document.querySelector(".scene");
@@ -19,12 +19,12 @@ function init() {
 
   //Camera setup
   camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-  camera.position.set(-20, 5, 30);
+  camera.position.set(-50, 30, 50);
 
-  const ambient = new THREE.AmbientLight(0x404040, 2);
+  const ambient = new THREE.AmbientLight(0x404040, 4);
   scene.add(ambient);
 
-  const light = new THREE.DirectionalLight(0xffffff, 2);
+  const light = new THREE.DirectionalLight(0xffffff, 4);
   light.position.set(50, 50, 100);
   scene.add(light);
   //Renderer
@@ -38,7 +38,7 @@ function init() {
   let loader = new THREE.GLTFLoader();
   loader.load("./borfustexHTML.gltf", function(gltf) {
     scene.add(gltf.scene);
-    house = gltf.scene.children[0];
+    obj = gltf.scene.children[0];
     animate();
   });
 }
