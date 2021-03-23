@@ -28,7 +28,7 @@ container.appendChild(renderer.domElement);
 
   // load model
   let loader = new THREE.GLTFLoader();
-  loader.load("./borfustexHTML.gltf", function(gltf) {
+  loader.load('./3d/scene.gltf', function(gltf) {
     scene.add(gltf.scene);
     console.log(gltf);
     renderer.render(scene, camera);
