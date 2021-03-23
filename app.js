@@ -4,7 +4,7 @@ let container;
 let camera;
 let renderer;
 let scene;
-let obj;
+let object;
 
 function init() {
   container = document.querySelector(".scene");
@@ -38,14 +38,14 @@ function init() {
   let loader = new THREE.GLTFLoader();
   loader.load("./borfustexHTML.gltf", function(gltf) {
     scene.add(gltf.scene);
-    obj = gltf.scene.children[0];
+    object = gltf.scene.children[0];
     animate();
   });
 }
 
 function animate() {
   requestAnimationFrame(animate);
-  house.rotation.z += 0.005;
+  object.rotation.z += 0.005;
   renderer.render(scene, camera);
 }
 
