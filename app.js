@@ -46,8 +46,9 @@ function init() {
 
 function animate() {
   requestAnimationFrame(animate);
-  object.rotation.x += 0.005;
-    object.rotation.z += 0.005;
+  object.rotation.x += 0.002;
+    object.rotation.z += 0.002;
+    object.rotation.y += 0.002;
   renderer.render(scene, camera);
 }
 
