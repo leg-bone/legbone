@@ -46,9 +46,9 @@ function init() {
 
 function animate() {
   requestAnimationFrame(animate);
-  object.rotation.x += (Math.random() * (.009 - .001) + .05);
-    object.rotation.z += (Math.random() * (.009 - .001) + .05);
-    object.rotation.y += (Math.random() * (.009 - .001) + .05);
+  object.rotation.x += (Math.random() * (.002 - .0001) + .05);
+    object.rotation.z += (Math.random() * (.002 - .0001) + .05);
+    object.rotation.y += (Math.random() * (.002 - .0001) + .05);
   renderer.render(scene, camera);
 }
 
