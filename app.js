@@ -10,7 +10,7 @@ function init() {
   container = document.querySelector(".scene");
 
   //Create scene
-  scene = new THREE.Scene();
+  const scene = new THREE.Scene();
 
   const fov = 35;
   const aspect = container.clientWidth / container.clientHeight;
@@ -18,9 +18,13 @@ function init() {
   const far = 10000;
 
   //Camera setup
-  camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-  camera.position.set(45, (window.innerWidth * 4)/window.innerHeight, 1, 1000 );
+  const camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
+  camera.position.set( 0, 20, 100 );
+controls.update();
+
   camera.position.z = 1008;
+
+  const controls = new OrbitControls( camera, renderer.domElement );
 
   const ambient = new THREE.AmbientLight(0x404040, 8);
   scene.add(ambient);
@@ -43,12 +47,15 @@ function init() {
     animate();
   });
 }
+controls.update();
 
 function animate() {
   requestAnimationFrame(animate);
   object.rotation.x += (Math.random() * (.002 - .0001) + .05);
     object.rotation.z += (Math.random() * (.002 - .0001) + .05);
     object.rotation.y += (Math.random() * (.002 - .0001) + .05);
+    requestAnimationFrame(animate);
+    controls.update();
   renderer.render(scene, camera);
 }
 
