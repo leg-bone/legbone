@@ -50,19 +50,12 @@ function init() {
 
 
 function animate() {
-<<<<<<< HEAD
 
   object.rotation.x += (Math.random() * (.002 - .0001) + .05);
     object.rotation.z += (Math.random() * (.002 - .0001) + .05);
     object.rotation.y += (Math.random() * (.002 - .0001) + .05);
     requestAnimationFrame(animate);
 
-=======
-  requestAnimationFrame(animate);
-  object.rotation.x += (Math.random() * (.6 - .05) -.6);
-    object.rotation.z += (Math.random() * (.6 - .05) -.6);
-    object.rotation.y += (Math.random() * (.6 - .05) -.6);
->>>>>>> parent of 58a6f47 (d)
   renderer.render(scene, camera);
 }
 
