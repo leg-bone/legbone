@@ -20,11 +20,11 @@ function init() {
   //Camera setup
   const camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
   camera.position.set(45, (window.innerWidth * 4)/window.innerHeight, 1, 10000 );
-  scene.add(camera);
 
 
+  camera.position.z = 1008;
 
-
+  const controls = new OrbitControls( camera, renderer.domElement );
 
   const ambient = new THREE.AmbientLight(0x404040, 8);
   scene.add(ambient);
@@ -33,8 +33,9 @@ function init() {
   light.position.set(50, 50, 100);
   scene.add(light);
   //Renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer = new THREE.CanvasRenderer();
+  renderer.setClearColor(0x000000, 1.0);
+  renderer.setSize(200px, 200px);
   renderer.setPixelRatio(window.devicePixelRatio);
 
   container.appendChild(renderer.domElement);
@@ -47,15 +48,15 @@ function init() {
     animate();
   });
 }
-
+controls.update();
 
 function animate() {
-
+  requestAnimationFrame(animate);
   object.rotation.x += (Math.random() * (.002 - .0001) + .05);
     object.rotation.z += (Math.random() * (.002 - .0001) + .05);
     object.rotation.y += (Math.random() * (.002 - .0001) + .05);
     requestAnimationFrame(animate);
-
+    controls.update();
   renderer.render(scene, camera);
 }
 
