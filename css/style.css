@@ -32,7 +32,8 @@ header{
   background:#8a2be2;
   color:#FFFFFF;
   padding-top:44px;
-  min-height:44px;
+  min-height: 40px;
+  width: 100%;
 
 }
 
