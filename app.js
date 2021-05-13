@@ -43,17 +43,22 @@ function init() {
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   //Load Model
 
-const texture = new THREE.TextureLoader().load('./3d/textures/bernoSurface_Color.jpg');
-const material = new THREE.MeshBasicMaterial({ map : texture });
+const textureLoader = new THREE.TextureLoader();
+const borfo = textureLoader.load('./3d/textures/bernoSurface_Color.jpg');
+
+
+
 
   let loader = new THREE.GLTFLoader();
-  loader.load("./borfustexHTML.gltf", function(gltf) {
+  loader.load("./bunny4.gltf", function(gltf) {
+
     scene.add(gltf.scene);
     object = gltf.scene.children[0];
 
     animate();
   });
 }
+
 
 function animate() {
   requestAnimationFrame(animate);
