@@ -26,6 +26,13 @@ class BasicCharacterController {
     this._acceleration = new THREE.Vector3(1, 0.25, 50.0);
     this._velocity = new THREE.Vector3(0, 0, 0);
     this._position = new THREE.Vector3();
+    this._autoMoveSpeed = 20.0;  // Normal forward speed
+    this._slowMoveSpeed = 10.0;  // Half speed when S is pressed
+    this._gravity = -9.8;
+    this._isGrounded = false;
+    this._raycaster = new THREE.Raycaster();
+    this._raycaster.far = 10;
+    this._fallThreshold = 0.5; // Distance threshold to trigger fall state
 
     this._animations = {};
     this._input = new BasicCharacterControllerInput();
@@ -51,7 +58,7 @@ class BasicCharacterController {
 
       this._manager = new THREE.LoadingManager();
       this._manager.onLoad = () => {
-        this._stateMachine.SetState('idle');
+        this._stateMachine.SetState('walk');
       };
 
       const _OnLoad = (animName, anim) => {
@@ -84,12 +91,52 @@ class BasicCharacterController {
     return this._target.quaternion;
   }
 
+  _CheckGroundCollision() {
+    if (!this._target) return;
+
+    // Cast ray downward from character's position
+    const rayStart = this._target.position.clone();
+    rayStart.y += 0.1; // Slight offset to avoid self-collision
+    const rayEnd = rayStart.clone();
+    rayEnd.y -= 1.0; // Ray length
+
+    this._raycaster.set(rayStart, new THREE.Vector3(0, -1, 0));
+    const intersects = this._raycaster.intersectObjects(this._params.scene.children, true);
+
+    // Check if we hit something
+    if (intersects.length > 0) {
+      const distance = intersects[0].distance;
+      if (distance < 1.0) {
+        this._isGrounded = true;
+        this._target.position.y = intersects[0].point.y + 0.1; // Small offset to prevent sinking
+        this._velocity.y = 0;
+      } else {
+        this._isGrounded = false;
+        // Check if we're far enough from ground to trigger fall state
+        if (distance > this._fallThreshold && this._stateMachine._currentState.Name !== 'fall') {
+          this._stateMachine.SetState('fall');
+        }
+      }
+    } else {
+      this._isGrounded = false;
+      // If no ground detected, we're definitely falling
+      if (this._stateMachine._currentState.Name !== 'fall') {
+        this._stateMachine.SetState('fall');
+      }
+    }
+  }
+
   Update(timeInSeconds) {
     if (!this._stateMachine._currentState) {
       return;
     }
 
     this._stateMachine.Update(timeInSeconds, this._input);
+
+    // Apply gravity
+    if (!this._isGrounded) {
+      this._velocity.y += this._gravity * timeInSeconds;
+    }
 
     const velocity = this._velocity;
     const frameDecceleration = new THREE.Vector3(
@@ -109,20 +156,17 @@ class BasicCharacterController {
     const _R = controlObject.quaternion.clone();
 
     const acc = this._acceleration.clone();
-    if (this._input._keys.shift) {
-      acc.multiplyScalar(2.0);
-    }
-
     if (this._stateMachine._currentState.Name == 'dance') {
       acc.multiplyScalar(0.0);
     }
 
-    if (this._input._keys.forward) {
-      velocity.z += acc.z * timeInSeconds;
-    }
+    // Automatic forward movement with speed control
     if (this._input._keys.backward) {
-      velocity.z -= acc.z * timeInSeconds;
+      velocity.z = this._slowMoveSpeed;
+    } else {
+      velocity.z = this._autoMoveSpeed;
     }
+
     if (this._input._keys.left) {
       _A.set(0, 1, 0);
       _Q.setFromAxisAngle(_A, 4.0 * Math.PI * timeInSeconds * this._acceleration.y);
@@ -152,6 +196,9 @@ class BasicCharacterController {
 
     controlObject.position.add(forward);
     controlObject.position.add(sideways);
+    controlObject.position.y += velocity.y * timeInSeconds;
+
+    this._CheckGroundCollision();
 
     this._position.copy(controlObject.position);
 
@@ -273,6 +320,7 @@ class CharacterFSM extends FiniteStateMachine {
     this._AddState('walk', WalkState);
     this._AddState('run', RunState);
     this._AddState('dance', DanceState);
+    this._AddState('fall', FallState);
   }
 };
 
@@ -302,6 +350,7 @@ class DanceState extends State {
   }
 
   Enter(prevState) {
+    this._prevState = prevState;  // Store the previous state
     const curAction = this._parent._proxy._animations['dance'].action;
     const mixer = curAction.getMixer();
     mixer.addEventListener('finished', this._FinishedCallback);
@@ -312,22 +361,36 @@ class DanceState extends State {
       curAction.reset();  
       curAction.setLoop(THREE.LoopOnce, 1);
       curAction.clampWhenFinished = true;
-      curAction.crossFadeFrom(prevAction, 0.2, true);
+      curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
     } else {
+    curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
     }
   }
 
   _Finished() {
     this._Cleanup();
-    this._parent.SetState('idle');
+    if (this._prevState) {
+      // Transition back to the previous state with a smooth crossfade
+      const prevAction = this._parent._proxy._animations[this._prevState.Name].action;
+      const curAction = this._parent._proxy._animations['dance'].action;
+      
+      prevAction.reset();
+      prevAction.setEffectiveTimeScale(1.0);
+      prevAction.setEffectiveWeight(1.0);
+      prevAction.crossFadeFrom(curAction, 0.5, true);
+      prevAction.play();
+      
+      this._parent.SetState(this._prevState.Name);
+    } else {
+      this._parent.SetState('idle');
+    }
   }
 
   _Cleanup() {
     const action = this._parent._proxy._animations['dance'].action;
-    
-    action.getMixer().removeEventListener('finished', this._CleanupCallback);
+    action.getMixer().removeEventListener('finished', this._FinishedCallback);
   }
 
   Exit() {
@@ -352,7 +415,6 @@ class WalkState extends State {
     const curAction = this._parent._proxy._animations['walk'].action;
     if (prevState) {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
-
       curAction.enabled = true;
 
       if (prevState.Name == 'run') {
@@ -367,6 +429,7 @@ class WalkState extends State {
       curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
     } else {
+  
       curAction.play();
     }
   }
@@ -375,14 +438,14 @@ class WalkState extends State {
   }
 
   Update(timeElapsed, input) {
-    if (input._keys.forward || input._keys.backward) {
-      if (input._keys.shift) {
-        this._parent.SetState('run');
-      }
+    if (input._keys.forward) {
+      this._parent.SetState('run');
       return;
     }
-
-    this._parent.SetState('idle');
+    if (input._keys.backward) {
+      this._parent.SetState('dance');
+      return;
+    }
   }
 };
 
@@ -412,7 +475,7 @@ class RunState extends State {
         curAction.setEffectiveWeight(1.0);
       }
 
-      curAction.crossFadeFrom(prevAction, 0.5, true);
+      curAction.crossFadeFrom(prevAction, 1.0, true);
       curAction.play();
     } else {
       curAction.play();
@@ -423,14 +486,14 @@ class RunState extends State {
   }
 
   Update(timeElapsed, input) {
-    if (input._keys.forward || input._keys.backward) {
-      if (!input._keys.shift) {
-        this._parent.SetState('walk');
-      }
+    if (!input._keys.forward) {
+      this._parent.SetState('walk');
       return;
     }
-
-    this._parent.SetState('idle');
+    if (input._keys.backward) {
+      this._parent.SetState('dance');
+      return;
+    }
   }
 };
 
@@ -463,13 +526,51 @@ class IdleState extends State {
   }
 
   Update(_, input) {
-    if (input._keys.forward || input._keys.backward) {
-      this._parent.SetState('walk');
-    } else if (input._keys.space) {
+    if (input._keys.forward) {
+      this._parent.SetState('run');
+    } else if (input._keys.backward) {
       this._parent.SetState('dance');
     }
   }
 };
+
+
+class FallState extends State {
+  constructor(parent) {
+    super(parent);
+  }
+
+  get Name() {
+    return 'fall';
+  }
+
+  Enter(prevState) {
+    const curAction = this._parent._proxy._animations['dance'].action; // Using dance as placeholder
+    if (prevState) {
+      const prevAction = this._parent._proxy._animations[prevState.Name].action;
+      curAction.enabled = true;
+      curAction.setLoop(THREE.LoopRepeat, 10); // Play once and stop
+      curAction.clampWhenFinished = true;
+      curAction.crossFadeFrom(prevAction, 0.5, true);
+      curAction.play();
+    } else {
+      curAction.setLoop(THREE.LoopRepeat, 10);
+      curAction.clampWhenFinished = true;
+      curAction.crossFadeFrom(prevAction, 0.5, true);
+      curAction.play();
+    }
+  }
+
+  Exit() {
+  }
+
+  Update(_, input) {
+    // Check if we're back on ground
+    if (this._parent._proxy._isGrounded) {
+      this._parent.SetState('walk');
+    }
+  }
+}
 
 
 class ThirdPersonCamera {
@@ -574,21 +675,55 @@ class ThirdPersonCameraDemo {
     texture.encoding = THREE.sRGBEncoding;
     this._scene.background = texture;
 
-    const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(100, 100, 10, 10),
-        new THREE.MeshStandardMaterial({
-            color: 0x808080,
-          }));
-    plane.castShadow = false;
-    plane.receiveShadow = true;
-    plane.rotation.x = -Math.PI / 2;
-    this._scene.add(plane);
+    // Initialize path generation
+    this._pathSegments = [];
+    this._segmentLength = 50; // Length of each path segment
+    this._segmentWidth = 10;  // Width of the path
+    this._maxSegments = 5;    // Number of segments to keep in memory
+    this._lastSegmentZ = 0;   // Z position of the last segment
+
+    // Create initial path segment
+    this._CreatePathSegment(0);
 
     this._mixers = [];
     this._previousRAF = null;
 
     this._LoadAnimatedModel();
     this._RAF();
+  }
+
+  _CreatePathSegment(zPosition) {
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(this._segmentWidth, this._segmentLength, 10, 10),
+      new THREE.MeshStandardMaterial({
+        color: 0x808080,
+      })
+    );
+    plane.castShadow = false;
+    plane.receiveShadow = true;
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.z = zPosition;
+    this._scene.add(plane);
+    this._pathSegments.push(plane);
+    this._lastSegmentZ = zPosition;
+  }
+
+  _UpdatePath() {
+    if (!this._controls) return;
+
+    const characterZ = this._controls.Position.z;
+    const nextSegmentZ = this._lastSegmentZ + this._segmentLength;
+
+    // Create new segment if character is approaching the end of the current path
+    if (characterZ > nextSegmentZ - this._segmentLength * 2) {
+      this._CreatePathSegment(nextSegmentZ);
+    }
+
+    // Remove old segments that are too far behind
+    while (this._pathSegments.length > this._maxSegments) {
+      const oldSegment = this._pathSegments.shift();
+      this._scene.remove(oldSegment);
+    }
   }
 
   _LoadAnimatedModel() {
@@ -632,6 +767,7 @@ class ThirdPersonCameraDemo {
 
     if (this._controls) {
       this._controls.Update(timeElapsedS);
+      this._UpdatePath(); // Update path generation
     }
 
     this._thirdPersonCamera.Update(timeElapsedS);
