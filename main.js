@@ -880,7 +880,7 @@ class ThirdPersonCameraDemo {
     }
 
     // Update shimmer effect with more subtle variations
-    this._shimmerTime += 0.3;
+    this._shimmerTime += 0.03;
     const randomFactor = Math.sin(this._shimmerTime * 0.5 + this._randomOffset) * 0.1;
     this._pathSegments.forEach(segment => {
       const material = segment.material;
