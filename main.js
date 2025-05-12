@@ -753,11 +753,6 @@ class ThirdPersonCameraDemo {
       .then(response => response.arrayBuffer())
       .then(arrayBuffer => this._audioContext.decodeAudioData(arrayBuffer))
       .then(audioBuffer => {
-        // Adjust volume by modifying the audio buffer
-        const channelData = audioBuffer.getChannelData(0);
-        for (let i = 0; i < channelData.length; i++) {
-          channelData[i] *= 1; // Apply volume reduction directly to samples
-        }
         this._audioBuffer = audioBuffer;
         this._playLoop();
       })
@@ -885,7 +880,7 @@ class ThirdPersonCameraDemo {
     }
 
     // Update shimmer effect with more subtle variations
-    this._shimmerTime += 0.03;
+    this._shimmerTime += 0.3;
     const randomFactor = Math.sin(this._shimmerTime * 0.5 + this._randomOffset) * 0.1;
     this._pathSegments.forEach(segment => {
       const material = segment.material;
@@ -965,15 +960,18 @@ class ThirdPersonCameraDemo {
     this._audioSource.buffer = this._audioBuffer;
     this._audioSource.connect(this._audioContext.destination);
     
-    // Set exact loop points with latency correction
+    // Set exact loop points
     this._audioSource.loop = true;
-    this._audioSource.loopStart = 0.001; // Small offset to prevent gap
-    this._audioSource.loopEnd = this._audioBuffer.duration - 0.001; // Small offset to prevent gap
+    this._audioSource.loopStart = 0;
+    this._audioSource.loopEnd = this._audioBuffer.duration;
     
-    // Add precise timing for loop
-    const startTime = this._audioContext.currentTime;
-    this._audioSource.start(startTime);
-    this._audioSource.stop(startTime + this._audioBuffer.duration);
+    // Set volume
+    const gainNode = this._audioContext.createGain();
+    gainNode.gain.value = 0.0001;
+    this._audioSource.connect(gainNode);
+    gainNode.connect(this._audioContext.destination);
+    
+    this._audioSource.start(0);
   }
 }
 
