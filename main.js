@@ -2,6 +2,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.118/build/three.mod
 
 import {FBXLoader} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/loaders/FBXLoader.js';
 import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/loaders/GLTFLoader.js';
+import {EffectComposer} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/postprocessing/EffectComposer.js';
+import {RenderPass} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'https://cdn.jsdelivr.net/npm/three@0.118.1/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 
 class BasicCharacterControllerProxy {
@@ -26,14 +29,17 @@ class BasicCharacterController {
     this._acceleration = new THREE.Vector3(1, 0.25, 50.0);
     this._velocity = new THREE.Vector3(0, 0, 0);
     this._position = new THREE.Vector3();
-    this._autoMoveSpeed = 20.0;  // Normal forward speed
-    this._slowMoveSpeed = 10.0;  // Half speed when S is pressed
+    this._autoMoveSpeed = 20.0;
+    this._slowMoveSpeed = 10.0;
+    this._runSpeed = 40.0;
     this._gravity = -9.8;
     this._isGrounded = false;
     this._raycaster = new THREE.Raycaster();
     this._raycaster.far = 10;
-    this._fallThreshold = 1.0; // Distance below plane to trigger fall state
-    this._planeY = 0; // Store the plane's y position
+    this._fallThreshold = 1.0;
+    this._planeY = 0;
+    this._desktopTurnSpeed = 1.0;  // Reduced from 2.0 to 1.0
+    this._mobileTurnSpeed = 0.5;   // Reduced from 1.0 to 0.5
 
     this._animations = {};
     this._input = new BasicCharacterControllerInput();
@@ -79,6 +85,7 @@ class BasicCharacterController {
       loader.load('run.fbx', (a) => { _OnLoad('run', a); });
       loader.load('idle.fbx', (a) => { _OnLoad('idle', a); });
       loader.load('dance.fbx', (a) => { _OnLoad('dance', a); });
+      loader.load('fall.fbx', (a) => { _OnLoad('fall', a); });
     });
   }
 
@@ -167,18 +174,23 @@ class BasicCharacterController {
     // Automatic forward movement with speed control
     if (this._input._keys.backward) {
       velocity.z = this._slowMoveSpeed;
+    } else if (this._stateMachine._currentState.Name === 'run') {
+      velocity.z = this._runSpeed;
     } else {
       velocity.z = this._autoMoveSpeed;
     }
 
+    // Use different turn speeds for desktop and mobile
+    const turnSpeed = this._input._isMobile ? this._mobileTurnSpeed : this._desktopTurnSpeed;
+
     if (this._input._keys.left) {
       _A.set(0, 1, 0);
-      _Q.setFromAxisAngle(_A, 4.0 * Math.PI * timeInSeconds * this._acceleration.y);
+      _Q.setFromAxisAngle(_A, turnSpeed * Math.PI * timeInSeconds * this._acceleration.y);
       _R.multiply(_Q);
     }
     if (this._input._keys.right) {
       _A.set(0, 1, 0);
-      _Q.setFromAxisAngle(_A, 4.0 * -Math.PI * timeInSeconds * this._acceleration.y);
+      _Q.setFromAxisAngle(_A, turnSpeed * -Math.PI * timeInSeconds * this._acceleration.y);
       _R.multiply(_Q);
     }
 
@@ -233,11 +245,14 @@ class BasicCharacterControllerInput {
       rightTouch: false,
       swipeStartY: 0,
       swipeStartX: 0,
-      swipeThreshold: 50, // Minimum distance for swipe
+      swipeThreshold: 50,
       runTimer: 0,
       isRunning: false,
       isInNeutralZone: false
     };
+
+    // Detect if we're on mobile
+    this._isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     // Keyboard event listeners
     document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
@@ -645,7 +660,7 @@ class FallState extends State {
   }
 
   Enter(prevState) {
-    const curAction = this._parent._proxy._animations['dance'].action; // Using dance as placeholder
+    const curAction = this._parent._proxy._animations['fall'].action; // Using dance as placeholder
     if (prevState) {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
       curAction.enabled = true;
@@ -683,14 +698,14 @@ class ThirdPersonCamera {
   }
 
   _CalculateIdealOffset() {
-    const idealOffset = new THREE.Vector3(-15, 20, -30);
+    const idealOffset = new THREE.Vector3(-15, 16, -30);
     idealOffset.applyQuaternion(this._params.target.Rotation);
     idealOffset.add(this._params.target.Position);
     return idealOffset;
   }
 
   _CalculateIdealLookat() {
-    const idealLookat = new THREE.Vector3(0, 10, 50);
+    const idealLookat = new THREE.Vector3(160, 10, 620);
     idealLookat.applyQuaternion(this._params.target.Rotation);
     idealLookat.add(this._params.target.Position);
     return idealLookat;
@@ -735,13 +750,25 @@ class ThirdPersonCameraDemo {
     }, false);
 
     const fov = 60;
-    const aspect = 1920 / 1080;
     const near = 1.0;
     const far = 1000.0;
-    this._camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-    this._camera.position.set(25, 10, 25);
+    this._camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, near, far);
+    this._camera.position.set(15, 10, 25);
 
     this._scene = new THREE.Scene();
+
+    // Setup bloom effect
+    this._composer = new EffectComposer(this._threejs);
+    const renderPass = new RenderPass(this._scene, this._camera);
+    this._composer.addPass(renderPass);
+
+    this._bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.8,    // strength
+      0.3,    // radius
+      0.9     // threshold
+    );
+    this._composer.addPass(this._bloomPass);
 
     let light = new THREE.DirectionalLight(0xFFFFFF, 1.0);
     light.position.set(-100, 100, 100);
@@ -778,10 +805,11 @@ class ThirdPersonCameraDemo {
     // Initialize path generation
     this._pathSegments = [];
     this._segmentLength = 50;
-    this._segmentWidth = 10;
+    this._segmentWidth = 20;
     this._maxSegments = 5;
     this._lastSegmentZ = 0;
     this._shimmerTime = 0;
+    this._randomOffset = Math.random() * Math.PI * 2; // Random starting phase
 
     // Create initial path segment
     this._CreatePathSegment(0);
@@ -797,14 +825,13 @@ class ThirdPersonCameraDemo {
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(this._segmentWidth, this._segmentLength, 10, 10),
       new THREE.MeshStandardMaterial({
-        color: 0xFFFFFF,
-        emissive: 0x8B5CF6,
-        emissiveIntensity: 5.0,
+        color: 0xE9D5FF,  // Changed to a very light blue-purple
+        emissive: 0x6B46C1,  // Keeping the blueish-purple glow
+        emissiveIntensity: 50.0,
         metalness: 1.0,
         roughness: 0.0,
         transparent: false,
         toneMapped: false,
-        envMapIntensity: 2.0,
         clearcoat: 1.0,
         clearcoatRoughness: 0.0
       })
@@ -835,13 +862,14 @@ class ThirdPersonCameraDemo {
       this._scene.remove(oldSegment);
     }
 
-    // Update shimmer effect
-    this._shimmerTime += 0.05;
+    // Update shimmer effect with more subtle variations
+    this._shimmerTime += 0.03;
+    const randomFactor = Math.sin(this._shimmerTime * 0.5 + this._randomOffset) * 0.1;
     this._pathSegments.forEach(segment => {
       const material = segment.material;
-      material.emissiveIntensity = 5.0 + Math.sin(this._shimmerTime) * 2.0;
+      material.emissiveIntensity = 50.0 + Math.sin(this._shimmerTime + randomFactor) * 0.5; // Reduced shimmer range
       material.metalness = 1.0;
-      material.roughness = Math.sin(this._shimmerTime * 2) * 0.1;
+      material.roughness = Math.sin(this._shimmerTime * 2 + randomFactor) * 0.05; // More subtle roughness variation
     });
   }
 
@@ -865,9 +893,13 @@ class ThirdPersonCameraDemo {
   }
 
   _OnWindowResize() {
+    // Update camera aspect ratio to match window
     this._camera.aspect = window.innerWidth / window.innerHeight;
     this._camera.updateProjectionMatrix();
+    
+    // Update renderer and composer size
     this._threejs.setSize(window.innerWidth, window.innerHeight);
+    this._composer.setSize(window.innerWidth, window.innerHeight);
   }
 
   _RAF() {
@@ -878,7 +910,7 @@ class ThirdPersonCameraDemo {
 
       this._RAF();
 
-      this._threejs.render(this._scene, this._camera);
+      this._composer.render();  // Use composer instead of threejs renderer
       this._Step(t - this._previousRAF);
       this._previousRAF = t;
     });
@@ -894,6 +926,12 @@ class ThirdPersonCameraDemo {
       this._controls.Update(timeElapsedS);
       this._UpdatePath();
     }
+
+    // Update bloom shimmer with more subtle and random variations
+    this._shimmerTime += 0.03; // Slower base speed
+    const randomFactor = Math.sin(this._shimmerTime * 0.5 + this._randomOffset) * 0.1; // Small random influence
+    this._bloomPass.strength = 0.8 + Math.sin(this._shimmerTime + randomFactor) * 0.1; // Reduced amplitude
+    this._bloomPass.radius = 0.3 + Math.sin(this._shimmerTime * 0.3 + randomFactor) * 0.02; // More subtle radius variation
 
     this._thirdPersonCamera.Update(timeElapsedS);
   }
