@@ -231,10 +231,10 @@ class BasicCharacterControllerInput {
     this._touchState = {
       leftTouch: false,
       rightTouch: false,
-      twoFingers: false,
-      lastTouchCount: 0,
       swipeStartY: 0,
       swipeThreshold: 50, // Minimum distance for swipe
+      runTimer: 0,
+      isRunning: false
     };
 
     // Keyboard event listeners
@@ -249,14 +249,7 @@ class BasicCharacterControllerInput {
     // Handle touch start
     touchOverlay.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      this._touchState.lastTouchCount = e.touches.length;
       
-      // Check for two-finger touch
-      if (e.touches.length === 2) {
-        this._touchState.twoFingers = true;
-        this._keys.forward = true;
-      }
-
       // Record swipe start position
       this._touchState.swipeStartY = e.touches[0].clientY;
 
@@ -275,13 +268,19 @@ class BasicCharacterControllerInput {
     touchOverlay.addEventListener('touchmove', (e) => {
       e.preventDefault();
       
-      // Check for swipe down
       if (e.touches.length === 1) {
         const currentY = e.touches[0].clientY;
         const deltaY = currentY - this._touchState.swipeStartY;
         
+        // Check for swipe down
         if (deltaY > this._touchState.swipeThreshold) {
           this._keys.backward = true;
+        }
+        // Check for swipe up
+        else if (deltaY < -this._touchState.swipeThreshold && !this._touchState.isRunning) {
+          this._touchState.isRunning = true;
+          this._keys.forward = true;
+          this._touchState.runTimer = 5.0; // Start 5 second timer
         }
       }
     }, { passive: false });
@@ -290,12 +289,6 @@ class BasicCharacterControllerInput {
     touchOverlay.addEventListener('touchend', (e) => {
       e.preventDefault();
       
-      // Reset two-finger state
-      if (this._touchState.lastTouchCount === 2) {
-        this._touchState.twoFingers = false;
-        this._keys.forward = false;
-      }
-
       // Reset side touch states
       this._touchState.leftTouch = false;
       this._touchState.rightTouch = false;
@@ -303,6 +296,17 @@ class BasicCharacterControllerInput {
       this._keys.right = false;
       this._keys.backward = false;
     }, { passive: false });
+
+    // Update run timer
+    setInterval(() => {
+      if (this._touchState.isRunning) {
+        this._touchState.runTimer -= 0.1;
+        if (this._touchState.runTimer <= 0) {
+          this._touchState.isRunning = false;
+          this._keys.forward = false;
+        }
+      }
+    }, 100);
   }
 
   _onKeyDown(event) {
