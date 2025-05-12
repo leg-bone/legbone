@@ -232,9 +232,11 @@ class BasicCharacterControllerInput {
       leftTouch: false,
       rightTouch: false,
       swipeStartY: 0,
+      swipeStartX: 0,
       swipeThreshold: 50, // Minimum distance for swipe
       runTimer: 0,
-      isRunning: false
+      isRunning: false,
+      isInNeutralZone: false
     };
 
     // Keyboard event listeners
@@ -245,6 +247,7 @@ class BasicCharacterControllerInput {
     const touchOverlay = document.getElementById('touchOverlay');
     const leftTouch = document.getElementById('leftTouch');
     const rightTouch = document.getElementById('rightTouch');
+    const neutralTouch = document.getElementById('neutralTouch');
 
     // Handle touch start
     touchOverlay.addEventListener('touchstart', (e) => {
@@ -252,15 +255,25 @@ class BasicCharacterControllerInput {
       
       // Record swipe start position
       this._touchState.swipeStartY = e.touches[0].clientY;
+      this._touchState.swipeStartX = e.touches[0].clientX;
 
-      // Check which side was touched
+      // Check which zone was touched
       const touchX = e.touches[0].clientX;
-      if (touchX < window.innerWidth / 2) {
+      const screenWidth = window.innerWidth;
+      
+      if (touchX < screenWidth * 0.3) {
+        // Left zone
         this._touchState.leftTouch = true;
         this._keys.left = true;
-      } else {
+        this._touchState.isInNeutralZone = false;
+      } else if (touchX > screenWidth * 0.7) {
+        // Right zone
         this._touchState.rightTouch = true;
         this._keys.right = true;
+        this._touchState.isInNeutralZone = false;
+      } else {
+        // Neutral zone
+        this._touchState.isInNeutralZone = true;
       }
     }, { passive: false });
 
@@ -272,15 +285,18 @@ class BasicCharacterControllerInput {
         const currentY = e.touches[0].clientY;
         const deltaY = currentY - this._touchState.swipeStartY;
         
-        // Check for swipe down
-        if (deltaY > this._touchState.swipeThreshold) {
-          this._keys.backward = true;
-        }
-        // Check for swipe up
-        else if (deltaY < -this._touchState.swipeThreshold && !this._touchState.isRunning) {
-          this._touchState.isRunning = true;
-          this._keys.forward = true;
-          this._touchState.runTimer = 5.0; // Start 5 second timer
+        // Only process swipes in neutral zone
+        if (this._touchState.isInNeutralZone) {
+          // Check for swipe down
+          if (deltaY > this._touchState.swipeThreshold) {
+            this._keys.backward = true;
+          }
+          // Check for swipe up
+          else if (deltaY < -this._touchState.swipeThreshold && !this._touchState.isRunning) {
+            this._touchState.isRunning = true;
+            this._keys.forward = true;
+            this._touchState.runTimer = 5.0; // Start 5 second timer
+          }
         }
       }
     }, { passive: false });
@@ -292,6 +308,7 @@ class BasicCharacterControllerInput {
       // Reset side touch states
       this._touchState.leftTouch = false;
       this._touchState.rightTouch = false;
+      this._touchState.isInNeutralZone = false;
       this._keys.left = false;
       this._keys.right = false;
       this._keys.backward = false;
