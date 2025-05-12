@@ -743,6 +743,28 @@ class ThirdPersonCameraDemo {
     this._threejs.setPixelRatio(window.devicePixelRatio);
     this._threejs.setSize(window.innerWidth, window.innerHeight);
 
+    // Setup Web Audio API for better loop timing
+    this._audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    this._audioBuffer = null;
+    this._audioSource = null;
+    
+    // Load and setup the audio
+    fetch('./resources/loop.mp3')
+      .then(response => response.arrayBuffer())
+      .then(arrayBuffer => this._audioContext.decodeAudioData(arrayBuffer))
+      .then(audioBuffer => {
+        // Adjust volume by modifying the audio buffer
+        const channelData = audioBuffer.getChannelData(0);
+        for (let i = 0; i < channelData.length; i++) {
+          channelData[i] *= 1; // Apply volume reduction directly to samples
+        }
+        this._audioBuffer = audioBuffer;
+        this._playLoop();
+      })
+      .catch(error => {
+        console.log('Audio loading failed:', error);
+      });
+
     document.body.appendChild(this._threejs.domElement);
 
     window.addEventListener('resize', () => {
@@ -934,6 +956,24 @@ class ThirdPersonCameraDemo {
     this._bloomPass.radius = 0.3 + Math.sin(this._shimmerTime * 0.3 + randomFactor) * 0.02; // More subtle radius variation
 
     this._thirdPersonCamera.Update(timeElapsedS);
+  }
+
+  _playLoop() {
+    if (!this._audioBuffer) return;
+    
+    this._audioSource = this._audioContext.createBufferSource();
+    this._audioSource.buffer = this._audioBuffer;
+    this._audioSource.connect(this._audioContext.destination);
+    
+    // Set exact loop points with latency correction
+    this._audioSource.loop = true;
+    this._audioSource.loopStart = 0.001; // Small offset to prevent gap
+    this._audioSource.loopEnd = this._audioBuffer.duration - 0.001; // Small offset to prevent gap
+    
+    // Add precise timing for loop
+    const startTime = this._audioContext.currentTime;
+    this._audioSource.start(startTime);
+    this._audioSource.stop(startTime + this._audioBuffer.duration);
   }
 }
 
