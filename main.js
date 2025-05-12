@@ -731,6 +731,13 @@ class ThirdPersonCamera {
 class ThirdPersonCameraDemo {
   constructor() {
     this._Initialize();
+    this._setupAudio();
+  }
+
+  _setupAudio() {
+    this._audio = new Audio();
+    this._audio.src = './resources/loop.mp3';
+    this._audio.loop = true;
   }
 
   _Initialize() {
@@ -742,23 +749,6 @@ class ThirdPersonCameraDemo {
     this._threejs.shadowMap.type = THREE.PCFSoftShadowMap;
     this._threejs.setPixelRatio(window.devicePixelRatio);
     this._threejs.setSize(window.innerWidth, window.innerHeight);
-
-    // Setup Web Audio API for better loop timing
-    this._audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    this._audioBuffer = null;
-    this._audioSource = null;
-    
-    // Load and setup the audio
-    fetch('./resources/loop.mp3')
-      .then(response => response.arrayBuffer())
-      .then(arrayBuffer => this._audioContext.decodeAudioData(arrayBuffer))
-      .then(audioBuffer => {
-        this._audioBuffer = audioBuffer;
-        this._playLoop();
-      })
-      .catch(error => {
-        console.log('Audio loading failed:', error);
-      });
 
     document.body.appendChild(this._threejs.domElement);
 
@@ -944,6 +934,11 @@ class ThirdPersonCameraDemo {
       this._UpdatePath();
     }
 
+    // Ensure audio is playing
+    if (this._audio.paused) {
+      this._audio.play();
+    }
+
     // Update bloom shimmer with more subtle and random variations
     this._shimmerTime += 0.03; // Slower base speed
     const randomFactor = Math.sin(this._shimmerTime * 0.5 + this._randomOffset) * 0.1; // Small random influence
@@ -951,27 +946,6 @@ class ThirdPersonCameraDemo {
     this._bloomPass.radius = 0.3 + Math.sin(this._shimmerTime * 0.3 + randomFactor) * 0.02; // More subtle radius variation
 
     this._thirdPersonCamera.Update(timeElapsedS);
-  }
-
-  _playLoop() {
-    if (!this._audioBuffer) return;
-    
-    this._audioSource = this._audioContext.createBufferSource();
-    this._audioSource.buffer = this._audioBuffer;
-    this._audioSource.connect(this._audioContext.destination);
-    
-    // Set exact loop points
-    this._audioSource.loop = true;
-    this._audioSource.loopStart = 0;
-    this._audioSource.loopEnd = this._audioBuffer.duration;
-    
-    // Set volume
-    const gainNode = this._audioContext.createGain();
-    gainNode.gain.value = 0.0001;
-    this._audioSource.connect(gainNode);
-    gainNode.connect(this._audioContext.destination);
-    
-    this._audioSource.start(0);
   }
 }
 
