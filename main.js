@@ -32,7 +32,8 @@ class BasicCharacterController {
     this._isGrounded = false;
     this._raycaster = new THREE.Raycaster();
     this._raycaster.far = 10;
-    this._fallThreshold = 0.5; // Distance threshold to trigger fall state
+    this._fallThreshold = 1.0; // Distance below plane to trigger fall state
+    this._planeY = 0; // Store the plane's y position
 
     this._animations = {};
     this._input = new BasicCharacterControllerInput();
@@ -52,6 +53,7 @@ class BasicCharacterController {
       });
 
       this._target = fbx;
+      this._target.position.y = 10.0; // Set initial height to 100 units
       this._params.scene.add(this._target);
 
       this._mixer = new THREE.AnimationMixer(this._target);
@@ -112,15 +114,17 @@ class BasicCharacterController {
         this._velocity.y = 0;
       } else {
         this._isGrounded = false;
-        // Check if we're far enough from ground to trigger fall state
-        if (distance > this._fallThreshold && this._stateMachine._currentState.Name !== 'fall') {
+        // Check if we're far enough below the plane to trigger fall state
+        if (this._target.position.y < this._planeY - this._fallThreshold && 
+            this._stateMachine._currentState.Name !== 'fall') {
           this._stateMachine.SetState('fall');
         }
       }
     } else {
       this._isGrounded = false;
-      // If no ground detected, we're definitely falling
-      if (this._stateMachine._currentState.Name !== 'fall') {
+      // If no ground detected and we're below threshold, trigger fall state
+      if (this._target.position.y < this._planeY - this._fallThreshold && 
+          this._stateMachine._currentState.Name !== 'fall') {
         this._stateMachine.SetState('fall');
       }
     }
@@ -222,8 +226,83 @@ class BasicCharacterControllerInput {
       space: false,
       shift: false,
     };
+
+    // Touch state tracking
+    this._touchState = {
+      leftTouch: false,
+      rightTouch: false,
+      twoFingers: false,
+      lastTouchCount: 0,
+      swipeStartY: 0,
+      swipeThreshold: 50, // Minimum distance for swipe
+    };
+
+    // Keyboard event listeners
     document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
     document.addEventListener('keyup', (e) => this._onKeyUp(e), false);
+
+    // Touch event listeners
+    const touchOverlay = document.getElementById('touchOverlay');
+    const leftTouch = document.getElementById('leftTouch');
+    const rightTouch = document.getElementById('rightTouch');
+
+    // Handle touch start
+    touchOverlay.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      this._touchState.lastTouchCount = e.touches.length;
+      
+      // Check for two-finger touch
+      if (e.touches.length === 2) {
+        this._touchState.twoFingers = true;
+        this._keys.forward = true;
+      }
+
+      // Record swipe start position
+      this._touchState.swipeStartY = e.touches[0].clientY;
+
+      // Check which side was touched
+      const touchX = e.touches[0].clientX;
+      if (touchX < window.innerWidth / 2) {
+        this._touchState.leftTouch = true;
+        this._keys.left = true;
+      } else {
+        this._touchState.rightTouch = true;
+        this._keys.right = true;
+      }
+    }, { passive: false });
+
+    // Handle touch move
+    touchOverlay.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      
+      // Check for swipe down
+      if (e.touches.length === 1) {
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - this._touchState.swipeStartY;
+        
+        if (deltaY > this._touchState.swipeThreshold) {
+          this._keys.backward = true;
+        }
+      }
+    }, { passive: false });
+
+    // Handle touch end
+    touchOverlay.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      
+      // Reset two-finger state
+      if (this._touchState.lastTouchCount === 2) {
+        this._touchState.twoFingers = false;
+        this._keys.forward = false;
+      }
+
+      // Reset side touch states
+      this._touchState.leftTouch = false;
+      this._touchState.rightTouch = false;
+      this._keys.left = false;
+      this._keys.right = false;
+      this._keys.backward = false;
+    }, { passive: false });
   }
 
   _onKeyDown(event) {
@@ -677,10 +756,11 @@ class ThirdPersonCameraDemo {
 
     // Initialize path generation
     this._pathSegments = [];
-    this._segmentLength = 50; // Length of each path segment
-    this._segmentWidth = 10;  // Width of the path
-    this._maxSegments = 5;    // Number of segments to keep in memory
-    this._lastSegmentZ = 0;   // Z position of the last segment
+    this._segmentLength = 50;
+    this._segmentWidth = 10;
+    this._maxSegments = 5;
+    this._lastSegmentZ = 0;
+    this._shimmerTime = 0;
 
     // Create initial path segment
     this._CreatePathSegment(0);
@@ -696,7 +776,16 @@ class ThirdPersonCameraDemo {
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(this._segmentWidth, this._segmentLength, 10, 10),
       new THREE.MeshStandardMaterial({
-        color: 0x808080,
+        color: 0xFFFFFF,
+        emissive: 0x8B5CF6,
+        emissiveIntensity: 5.0,
+        metalness: 1.0,
+        roughness: 0.0,
+        transparent: false,
+        toneMapped: false,
+        envMapIntensity: 2.0,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.0
       })
     );
     plane.castShadow = false;
@@ -724,6 +813,15 @@ class ThirdPersonCameraDemo {
       const oldSegment = this._pathSegments.shift();
       this._scene.remove(oldSegment);
     }
+
+    // Update shimmer effect
+    this._shimmerTime += 0.05;
+    this._pathSegments.forEach(segment => {
+      const material = segment.material;
+      material.emissiveIntensity = 5.0 + Math.sin(this._shimmerTime) * 2.0;
+      material.metalness = 1.0;
+      material.roughness = Math.sin(this._shimmerTime * 2) * 0.1;
+    });
   }
 
   _LoadAnimatedModel() {
@@ -732,6 +830,12 @@ class ThirdPersonCameraDemo {
       scene: this._scene,
     }
     this._controls = new BasicCharacterController(params);
+    
+    // Set the plane's y position after controls are created
+    const plane = this._scene.children.find(child => child instanceof THREE.Mesh && child.geometry instanceof THREE.PlaneGeometry);
+    if (plane) {
+      this._controls._planeY = plane.position.y;
+    }
 
     this._thirdPersonCamera = new ThirdPersonCamera({
       camera: this._camera,
@@ -767,7 +871,7 @@ class ThirdPersonCameraDemo {
 
     if (this._controls) {
       this._controls.Update(timeElapsedS);
-      this._UpdatePath(); // Update path generation
+      this._UpdatePath();
     }
 
     this._thirdPersonCamera.Update(timeElapsedS);
