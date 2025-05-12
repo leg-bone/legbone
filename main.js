@@ -25,21 +25,21 @@ class BasicCharacterController {
 
   _Init(params) {
     this._params = params;
-    this._decceleration = new THREE.Vector3(-0.0005, -0.0001, -5.0);
-    this._acceleration = new THREE.Vector3(1, 0.25, 50.0);
+    this._decceleration = new THREE.Vector3(-0.001, -0.0002, -10.0);
+    this._acceleration = new THREE.Vector3(2, 0.5, 100.0);
     this._velocity = new THREE.Vector3(0, 0, 0);
     this._position = new THREE.Vector3();
-    this._autoMoveSpeed = 20.0;
-    this._slowMoveSpeed = 10.0;
-    this._runSpeed = 40.0;
-    this._gravity = -9.8;
+    this._autoMoveSpeed = 40.0;
+    this._slowMoveSpeed = 20.0;
+    this._runSpeed = 60.0;
+    this._gravity = -39.2;
     this._isGrounded = false;
     this._raycaster = new THREE.Raycaster();
     this._raycaster.far = 10;
     this._fallThreshold = 1.0;
     this._planeY = 0;
-    this._desktopTurnSpeed = 1.0;  // Reduced from 2.0 to 1.0
-    this._mobileTurnSpeed = 0.5;   // Reduced from 1.0 to 0.5
+    this._desktopTurnSpeed = 1.0;  // Restored to original
+    this._mobileTurnSpeed = 0.5;   // Restored to original
 
     this._animations = {};
     this._input = new BasicCharacterControllerInput();
@@ -59,7 +59,7 @@ class BasicCharacterController {
       });
 
       this._target = fbx;
-      this._target.position.y = 10.0; // Set initial height to 100 units
+      this._target.position.y = 30.0; // Set initial height to 100 units
       this._params.scene.add(this._target);
 
       this._mixer = new THREE.AnimationMixer(this._target);
@@ -110,12 +110,15 @@ class BasicCharacterController {
     rayEnd.y -= 1.0; // Ray length
 
     this._raycaster.set(rayStart, new THREE.Vector3(0, -1, 0));
-    const intersects = this._raycaster.intersectObjects(this._params.scene.children, true);
+    // Use only the collision planes for intersection
+    const collisionMeshes = this._params.scene.children.filter(obj => obj.type === 'Mesh' && obj.material.visible === false);
+    const intersects = this._raycaster.intersectObjects(collisionMeshes, true);
 
     // Check if we hit something
     if (intersects.length > 0) {
       const distance = intersects[0].distance;
-      if (distance < 1.0) {
+      // Only set grounded if falling and close to ground
+      if (distance < 1.0 && this._velocity.y <= 0) {
         this._isGrounded = true;
         this._target.position.y = intersects[0].point.y + 0.1; // Small offset to prevent sinking
         this._velocity.y = 0;
@@ -239,6 +242,8 @@ class BasicCharacterControllerInput {
       shift: false,
     };
 
+    this._isJumpRequested = false;
+
     // Touch state tracking
     this._touchState = {
       leftTouch: false,
@@ -267,15 +272,12 @@ class BasicCharacterControllerInput {
     // Handle touch start
     touchOverlay.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      
       // Record swipe start position
       this._touchState.swipeStartY = e.touches[0].clientY;
       this._touchState.swipeStartX = e.touches[0].clientX;
-
       // Check which zone was touched
       const touchX = e.touches[0].clientX;
       const screenWidth = window.innerWidth;
-      
       if (touchX < screenWidth * 0.3) {
         // Left zone
         this._touchState.leftTouch = true;
@@ -289,6 +291,8 @@ class BasicCharacterControllerInput {
       } else {
         // Neutral zone
         this._touchState.isInNeutralZone = true;
+        // Tap in neutral zone triggers jump
+        this._isJumpRequested = true;
       }
     }, { passive: false });
 
@@ -344,19 +348,25 @@ class BasicCharacterControllerInput {
   _onKeyDown(event) {
     switch (event.keyCode) {
       case 87: // w
+      case 38: // up arrow
         this._keys.forward = true;
         break;
       case 65: // a
+      case 37: // left arrow
         this._keys.left = true;
         break;
       case 83: // s
+      case 40: // down arrow
         this._keys.backward = true;
         break;
       case 68: // d
+      case 39: // right arrow
         this._keys.right = true;
         break;
       case 32: // SPACE
         this._keys.space = true;
+        // Space triggers jump
+        this._isJumpRequested = true;
         break;
       case 16: // SHIFT
         this._keys.shift = true;
@@ -367,15 +377,19 @@ class BasicCharacterControllerInput {
   _onKeyUp(event) {
     switch(event.keyCode) {
       case 87: // w
+      case 38: // up arrow
         this._keys.forward = false;
         break;
       case 65: // a
+      case 37: // left arrow
         this._keys.left = false;
         break;
       case 83: // s
+      case 40: // down arrow
         this._keys.backward = false;
         break;
       case 68: // d
+      case 39: // right arrow
         this._keys.right = false;
         break;
       case 32: // SPACE
@@ -809,17 +823,19 @@ class ThirdPersonCameraDemo {
     texture.encoding = THREE.sRGBEncoding;
     this._scene.background = texture;
 
-    // Initialize path generation
+    // Path generation state
     this._pathSegments = [];
     this._segmentLength = 50;
-    this._segmentWidth = 20;
-    this._maxSegments = 5;
-    this._lastSegmentZ = 0;
+    this._segmentWidth = 10;
+    this._maxSegments = 10;
+    this._headPos = new THREE.Vector3(0, 0, 0); // Start at origin
+    this._direction = 'z'; // 'z' = forward, 'x+' = right, 'x-' = left
     this._shimmerTime = 0;
-    this._randomOffset = Math.random() * Math.PI * 2; // Random starting phase
+    this._randomOffset = Math.random() * Math.PI * 2;
+    this._pathCount = 1; // Start with the initial segment
 
     // Create initial path segment
-    this._CreatePathSegment(0);
+    this._CreatePathSegment(this._headPos.clone());
 
     this._mixers = [];
     this._previousRAF = null;
@@ -828,12 +844,13 @@ class ThirdPersonCameraDemo {
     this._RAF();
   }
 
-  _CreatePathSegment(zPosition) {
+  _CreatePathSegment(position) {
+    // Visible mesh
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(this._segmentWidth, this._segmentLength, 10, 10),
       new THREE.MeshStandardMaterial({
-        color: 0xE9D5FF,  // Changed to a very light blue-purple
-        emissive: 0x6B46C1,  // Keeping the blueish-purple glow
+        color: 0xE9D5FF,
+        emissive: 0x6B46C1,
         emissiveIntensity: 50.0,
         metalness: 1.0,
         roughness: 0.0,
@@ -845,38 +862,103 @@ class ThirdPersonCameraDemo {
     );
     plane.castShadow = false;
     plane.receiveShadow = true;
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.z = zPosition;
+    plane.rotation.x = -Math.PI / 2; // Always parallel to XZ plane
+    plane.rotation.y = 0;
+    plane.rotation.z = 0;
+    plane.position.copy(position);
     this._scene.add(plane);
-    this._pathSegments.push(plane);
-    this._lastSegmentZ = zPosition;
+
+    // Collision buffer (invisible, slightly wider)
+    const bufferWidth = this._segmentWidth * 1.05;
+    const collisionPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(bufferWidth, this._segmentLength, 2, 2),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    collisionPlane.rotation.x = -Math.PI / 2;
+    collisionPlane.position.copy(position);
+    this._scene.add(collisionPlane);
+
+    this._pathSegments.push({mesh: plane, collision: collisionPlane, pos: position.clone(), dir: this._direction});
   }
 
   _UpdatePath() {
     if (!this._controls) return;
 
-    const characterZ = this._controls.Position.z;
-    const nextSegmentZ = this._lastSegmentZ + this._segmentLength;
+    const characterPos = this._controls.Position;
+    // Distance from character to head of path
+    const distToHead = characterPos.distanceTo(this._headPos);
 
-    // Create new segment if character is approaching the end of the current path
-    if (characterZ > nextSegmentZ - this._segmentLength * 2) {
-      this._CreatePathSegment(nextSegmentZ);
+    // If close to the end, add a new segment
+    if (distToHead < this._segmentLength * 2) {
+      // Decide turn: 0 = straight, -1 = left, 1 = right
+      let turn = 0;
+      if (this._pathCount > 15) {
+        const rand = Math.random();
+        if (rand < 0.3) turn = -1; // 30% left
+        else if (rand > 0.7) turn = 1; // 30% right
+        // else 40% straight
+      }
+
+      // Compute new direction
+      let newDir = this._direction;
+      if (turn === -1) {
+        if (this._direction === 'z') newDir = 'x-';
+        else if (this._direction === 'x+') newDir = 'z';
+        else if (this._direction === 'x-') newDir = 'z';
+      } else if (turn === 1) {
+        if (this._direction === 'z') newDir = 'x+';
+        else if (this._direction === 'x+') newDir = 'z';
+        else if (this._direction === 'x-') newDir = 'z';
+      }
+      // else keep going straight
+
+      // Compute new position
+      let newPos = this._headPos.clone();
+      if (newDir === this._direction) {
+        // Going straight
+        if (newDir === 'z') {
+          newPos.z += this._segmentLength;
+        } else if (newDir === 'x+') {
+          newPos.x += this._segmentWidth;
+        } else if (newDir === 'x-') {
+          newPos.x -= this._segmentWidth;
+        }
+      } else {
+        // Turning: offset by half width and half length to keep path continuous
+        if (this._direction === 'z' && newDir === 'x+') {
+          newPos.x += this._segmentWidth / 2;
+          newPos.z += this._segmentLength / 2;
+        } else if (this._direction === 'z' && newDir === 'x-') {
+          newPos.x -= this._segmentWidth / 2;
+          newPos.z += this._segmentLength / 2;
+        } else if (this._direction === 'x+' && newDir === 'z') {
+          newPos.x += this._segmentWidth / 2;
+          newPos.z += this._segmentLength / 2;
+        } else if (this._direction === 'x-' && newDir === 'z') {
+          newPos.x -= this._segmentWidth / 2;
+          newPos.z += this._segmentLength / 2;
+        }
+      }
+      this._direction = newDir;
+      this._headPos = newPos;
+      this._CreatePathSegment(newPos);
+      this._pathCount++;
     }
 
     // Remove old segments that are too far behind
     while (this._pathSegments.length > this._maxSegments) {
-      const oldSegment = this._pathSegments.shift();
-      this._scene.remove(oldSegment);
+      const old = this._pathSegments.shift();
+      this._scene.remove(old.mesh);
     }
 
-    // Update shimmer effect with more subtle variations
+    // Shimmer effect
     this._shimmerTime += 0.03;
     const randomFactor = Math.sin(this._shimmerTime * 0.5 + this._randomOffset) * 0.1;
-    this._pathSegments.forEach(segment => {
-      const material = segment.material;
-      material.emissiveIntensity = 50.0 + Math.sin(this._shimmerTime + randomFactor) * 0.5; // Reduced shimmer range
+    this._pathSegments.forEach(seg => {
+      const material = seg.mesh.material;
+      material.emissiveIntensity = 50.0 + Math.sin(this._shimmerTime + randomFactor) * 0.5;
       material.metalness = 1.0;
-      material.roughness = Math.sin(this._shimmerTime * 2 + randomFactor) * 0.05; // More subtle roughness variation
+      material.roughness = Math.sin(this._shimmerTime * 2 + randomFactor) * 0.05;
     });
   }
 
