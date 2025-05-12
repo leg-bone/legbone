@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>BLTNM GAMTEST</title>
+  <title>Three.JS Tutorial: Character Controller</title>
   <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
   <link rel="stylesheet" type="text/css" href="base.css">
   <style>
@@ -14,25 +14,34 @@
       touch-action: none;
       z-index: 1000;
     }
-    #leftTouch, #rightTouch {
+    #leftTouch, #rightTouch, #neutralTouch {
       position: absolute;
       top: 0;
       height: 100%;
-      width: 50%;
     }
     #leftTouch {
       left: 0;
+      width: 30%;
+    }
+    #neutralTouch {
+      left: 30%;
+      width: 40%;
     }
     #rightTouch {
       right: 0;
+      width: 30%;
     }
   </style>
 </head>
 <body>
   <div id="touchOverlay">
     <div id="leftTouch"></div>
+    <div id="neutralTouch"></div>
     <div id="rightTouch"></div>
   </div>
+
   <script src="./main.js" type="module">
   </script>
+
 </body>
+</html>
