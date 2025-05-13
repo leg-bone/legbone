@@ -856,10 +856,20 @@ class ThirdPersonCameraDemo {
   }
 
   _CreateMuteButton() {
+    // Create a container for the button
+    this._muteButtonContainer = document.createElement('div');
+    this._muteButtonContainer.style.position = 'fixed';
+    this._muteButtonContainer.style.top = '20px';
+    this._muteButtonContainer.style.right = '20px';
+    this._muteButtonContainer.style.width = '40px';
+    this._muteButtonContainer.style.height = '40px';
+    this._muteButtonContainer.style.pointerEvents = 'none';
+    this._muteButtonContainer.style.zIndex = '1000';
+
     this._muteButton = document.createElement('button');
-    this._muteButton.style.position = 'fixed';
-    this._muteButton.style.top = '20px';
-    this._muteButton.style.right = '20px';
+    this._muteButton.style.position = 'absolute';
+    this._muteButton.style.top = '0';
+    this._muteButton.style.right = '0';
     this._muteButton.style.width = '40px';
     this._muteButton.style.height = '40px';
     this._muteButton.style.borderRadius = '50%';
@@ -872,8 +882,8 @@ class ThirdPersonCameraDemo {
     this._muteButton.style.alignItems = 'center';
     this._muteButton.style.justifyContent = 'center';
     this._muteButton.style.fontSize = '20px';
-    this._muteButton.style.zIndex = '1000';
     this._muteButton.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.5)';
+    this._muteButton.style.pointerEvents = 'auto';
     this._muteButton.innerHTML = '🔊';
     
     this._muteButton.addEventListener('click', () => {
@@ -882,7 +892,8 @@ class ThirdPersonCameraDemo {
       this._muteButton.innerHTML = this._isMuted ? '🔇' : '🔊';
     });
 
-    document.body.appendChild(this._muteButton);
+    this._muteButtonContainer.appendChild(this._muteButton);
+    document.body.appendChild(this._muteButtonContainer);
   }
 
   _Initialize() {
