@@ -58,6 +58,7 @@ class BasicCharacterController {
   _CreateScoreDisplay() {
     // Create score display element
     this._scoreElement = document.createElement('div');
+    this._scoreElement.className = 'ui-element';
     this._scoreElement.style.position = 'fixed';
     this._scoreElement.style.bottom = '20px';
     this._scoreElement.style.right = '20px';
@@ -67,7 +68,6 @@ class BasicCharacterController {
     this._scoreElement.style.fontFamily = 'pixel, sans-serif';
     this._scoreElement.style.fontWeight = 'bold';
     this._scoreElement.style.textShadow = '0 0 10px rgba(255, 255, 255, 0.5)';
-    this._scoreElement.style.zIndex = '1000';
     this._scoreElement.textContent = '0';
     document.body.appendChild(this._scoreElement);
   }
@@ -858,6 +858,7 @@ class ThirdPersonCameraDemo {
   _CreateMuteButton() {
     // Create a container for the button
     this._muteButtonContainer = document.createElement('div');
+    this._muteButtonContainer.className = 'ui-element';
     this._muteButtonContainer.style.position = 'fixed';
     this._muteButtonContainer.style.top = '20px';
     this._muteButtonContainer.style.right = '20px';
