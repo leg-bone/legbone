@@ -844,59 +844,6 @@ class ThirdPersonCamera {
 class ThirdPersonCameraDemo {
   constructor() {
     this._Initialize();
-    this._setupAudio();
-  }
-
-  _setupAudio() {
-    this._audio = new Audio();
-    this._audio.src = './resources/loop.mp3';
-    this._audio.loop = true;
-    this._isMuted = false;
-    this._CreateMuteButton();
-  }
-
-  _CreateMuteButton() {
-    // Create a container for the button
-    this._muteButtonContainer = document.createElement('div');
-    this._muteButtonContainer.className = 'ui-element';
-    this._muteButtonContainer.style.position = 'fixed';
-    this._muteButtonContainer.style.top = '20px';
-    this._muteButtonContainer.style.right = '20px';
-    this._muteButtonContainer.style.width = '40px';
-    this._muteButtonContainer.style.height = '40px';
-    this._muteButtonContainer.style.pointerEvents = 'auto';
-    this._muteButtonContainer.style.zIndex = '1000';
-    this._muteButtonContainer.style.userSelect = 'none';
-
-    this._muteButton = document.createElement('button');
-    this._muteButton.style.position = 'absolute';
-    this._muteButton.style.top = '0';
-    this._muteButton.style.right = '0';
-    this._muteButton.style.width = '40px';
-    this._muteButton.style.height = '40px';
-    this._muteButton.style.borderRadius = '50%';
-    this._muteButton.style.border = 'none';
-    this._muteButton.style.backgroundColor = '#d9bfff';
-    this._muteButton.style.opacity = '0.8';
-    this._muteButton.style.color = '#000';
-    this._muteButton.style.cursor = 'pointer';
-    this._muteButton.style.display = 'flex';
-    this._muteButton.style.alignItems = 'center';
-    this._muteButton.style.justifyContent = 'center';
-    this._muteButton.style.fontSize = '20px';
-    this._muteButton.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.5)';
-    this._muteButton.style.pointerEvents = 'auto';
-    this._muteButton.style.userSelect = 'none';
-    this._muteButton.innerHTML = '🔊';
-    
-    this._muteButton.addEventListener('click', () => {
-      this._isMuted = !this._isMuted;
-      this._audio.muted = this._isMuted;
-      this._muteButton.innerHTML = this._isMuted ? '🔇' : '🔊';
-    });
-
-    this._muteButtonContainer.appendChild(this._muteButton);
-    document.body.appendChild(this._muteButtonContainer);
   }
 
   _Initialize() {
@@ -1169,11 +1116,6 @@ class ThirdPersonCameraDemo {
     if (this._controls) {
       this._controls.Update(timeElapsedS);
       this._UpdatePath();
-    }
-
-    // Ensure audio is playing
-    if (this._audio.paused && !this._isMuted) {
-      this._audio.play();
     }
 
     // Update bloom shimmer with more subtle and random variations
