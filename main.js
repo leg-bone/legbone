@@ -52,24 +52,6 @@ class BasicCharacterController {
         new BasicCharacterControllerProxy(this._animations));
 
     this._LoadModels();
-    this._CreateScoreDisplay();
-  }
-
-  _CreateScoreDisplay() {
-    // Create score display element
-    this._scoreElement = document.createElement('div');
-    this._scoreElement.className = 'ui-element';
-    this._scoreElement.style.position = 'fixed';
-    this._scoreElement.style.bottom = '20px';
-    this._scoreElement.style.right = '20px';
-    this._scoreElement.style.transform = 'translateX(-50%)';
-    this._scoreElement.style.color = '#d9bfff';
-    this._scoreElement.style.fontSize = '24px';
-    this._scoreElement.style.fontFamily = 'pixel, sans-serif';
-    this._scoreElement.style.fontWeight = 'bold';
-    this._scoreElement.style.textShadow = '0 0 10px rgba(255, 255, 255, 0.5)';
-    this._scoreElement.textContent = '0';
-    document.body.appendChild(this._scoreElement);
   }
 
   _LoadModels() {
@@ -284,17 +266,6 @@ class BasicCharacterController {
     controlObject.position.y += velocity.y * timeInSeconds;
 
     this._CheckGroundCollision();
-
-    // Update score based on Z position change
-    if (this._hasSpawned && this._isScoringEnabled) {
-      const currentZ = controlObject.position.z;
-      const zDiff = currentZ - this._lastZ;
-      if (zDiff > 0) { // Only count forward movement
-        this._score += Math.floor(zDiff);
-        this._scoreElement.textContent = `${this._score}`;
-      }
-      this._lastZ = currentZ;
-    }
 
     this._position.copy(controlObject.position);
 
