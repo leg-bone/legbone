@@ -51,6 +51,17 @@
       width: 30%;
     }
 
+    #muteTouch {
+      position: absolute;
+      top: 50px;
+      right: 0px;
+      width: 100px;
+      height: 100px;
+      z-index: 1002;
+      background: transparent;
+      touch-action: none;
+    }
+
     /* Ensure UI elements are above touch overlay */
     .ui-element {
       z-index: 1001;
@@ -62,6 +73,7 @@
     <div id="leftTouch"></div>
     <div id="neutralTouch"></div>
     <div id="rightTouch"></div>
+    <div id="muteTouch"></div>
   </div>
 
   <script src="./main.js" type="module"></script>
