@@ -864,8 +864,9 @@ class ThirdPersonCameraDemo {
     this._muteButtonContainer.style.right = '20px';
     this._muteButtonContainer.style.width = '40px';
     this._muteButtonContainer.style.height = '40px';
-    this._muteButtonContainer.style.pointerEvents = 'none';
+    this._muteButtonContainer.style.pointerEvents = 'auto';
     this._muteButtonContainer.style.zIndex = '1000';
+    this._muteButtonContainer.style.userSelect = 'none';
 
     this._muteButton = document.createElement('button');
     this._muteButton.style.position = 'absolute';
@@ -885,6 +886,7 @@ class ThirdPersonCameraDemo {
     this._muteButton.style.fontSize = '20px';
     this._muteButton.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.5)';
     this._muteButton.style.pointerEvents = 'auto';
+    this._muteButton.style.userSelect = 'none';
     this._muteButton.innerHTML = '🔊';
     
     this._muteButton.addEventListener('click', () => {
