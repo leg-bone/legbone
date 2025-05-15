@@ -180,7 +180,8 @@ class BasicCharacterController {
     // Handle jump request
     if (this._input._isJumpRequested && 
         this._stateMachine._currentState.Name !== 'jump' && 
-        this._stateMachine._currentState.Name !== 'fall') {
+        this._stateMachine._currentState.Name !== 'fall' &&
+        !this._stateMachine._currentState._isJumping) {
       this._stateMachine.SetState('jump');
       this._input._isJumpRequested = false;
     }
@@ -294,14 +295,32 @@ class BasicCharacterControllerInput {
     this._touchStartY = 0;
     this._touchEndX = 0;
     this._touchEndY = 0;
-    this._neutralZone = { x: 0, y: 0, width: 0, height: 0 };
-    this._document = document;
+    
+    // Initialize neutral zone with actual dimensions
+    const neutralTouch = document.getElementById('neutralTouch');
+    if (neutralTouch) {
+      const rect = neutralTouch.getBoundingClientRect();
+      this._neutralZone = {
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+    } else {
+      this._neutralZone = { x: 0, y: 0, width: 0, height: 0 };
+    }
 
-    this._document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
-    this._document.addEventListener('keyup', (e) => this._onKeyUp(e), false);
-    this._document.addEventListener('touchstart', (e) => this._onTouchStart(e), false);
-    this._document.addEventListener('touchend', (e) => this._onTouchEnd(e), false);
-    this._document.addEventListener('touchmove', (e) => this._onTouchMove(e), false);
+    // Add keyboard event listeners to document
+    document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
+    document.addEventListener('keyup', (e) => this._onKeyUp(e), false);
+
+    // Add touch event listeners to touch overlay
+    const touchOverlay = document.getElementById('touchOverlay');
+    if (touchOverlay) {
+      touchOverlay.addEventListener('touchstart', (e) => this._onTouchStart(e), { passive: false });
+      touchOverlay.addEventListener('touchend', (e) => this._onTouchEnd(e), { passive: false });
+      touchOverlay.addEventListener('touchmove', (e) => this._onTouchMove(e), { passive: false });
+    }
   }
 
   _onKeyDown(event) {
@@ -346,19 +365,59 @@ class BasicCharacterControllerInput {
   }
 
   _onTouchStart(event) {
+    event.preventDefault();
     this._isMobile = true;
     this._touchStartX = event.touches[0].clientX;
     this._touchStartY = event.touches[0].clientY;
+
+    // Check which side of the screen was touched
+    const touchX = event.touches[0].clientX;
+    const screenWidth = window.innerWidth;
+    
+    if (touchX < screenWidth * 0.3) {
+      this._keys.left = true;
+      this._keys.right = false;
+    } else if (touchX > screenWidth * 0.7) {
+      this._keys.left = false;
+      this._keys.right = true;
+    }
   }
 
   _onTouchEnd(event) {
+    event.preventDefault();
     this._isMobile = true;
     this._touchEndX = event.changedTouches[0].clientX;
     this._touchEndY = event.changedTouches[0].clientY;
     
-    // Check if touch ended in neutral zone
+    // Reset movement keys
+    this._keys.left = false;
+    this._keys.right = false;
+    
+    // Check if touch ended in neutral zone for jump
     if (this._isInNeutralZone(this._touchEndX, this._touchEndY)) {
       this._isJumpRequested = true;
+    }
+  }
+
+  _onTouchMove(event) {
+    event.preventDefault();
+    this._isMobile = true;
+    this._touchEndX = event.touches[0].clientX;
+    this._touchEndY = event.touches[0].clientY;
+
+    // Update movement based on touch position
+    const touchX = event.touches[0].clientX;
+    const screenWidth = window.innerWidth;
+    
+    if (touchX < screenWidth * 0.3) {
+      this._keys.left = true;
+      this._keys.right = false;
+    } else if (touchX > screenWidth * 0.7) {
+      this._keys.left = false;
+      this._keys.right = true;
+    } else {
+      this._keys.left = false;
+      this._keys.right = false;
     }
   }
 
@@ -368,12 +427,6 @@ class BasicCharacterControllerInput {
            y >= this._neutralZone.y && 
            y <= this._neutralZone.y + this._neutralZone.height;
   }
-
-  _onTouchMove(event) {
-    this._isMobile = true;
-    this._touchEndX = event.touches[0].clientX;
-    this._touchEndY = event.touches[0].clientY;
-    }
 
   Update() {
     // Reset jump request after it's been processed
@@ -697,7 +750,7 @@ class FallState extends State {
 class JumpState extends State {
   constructor(parent) {
     super(parent);
-
+    this._isJumping = false;
     this._FinishedCallback = () => {
       this._Finished();
     }
@@ -709,6 +762,7 @@ class JumpState extends State {
 
   Enter(prevState) {
     this._prevState = prevState;  // Store the previous state
+    this._isJumping = true;
     const curAction = this._parent._proxy._animations['jump'].action;
     const mixer = curAction.getMixer();
     mixer.addEventListener('finished', this._FinishedCallback);
@@ -728,6 +782,7 @@ class JumpState extends State {
 
   _Finished() {
     this._Cleanup();
+    this._isJumping = false;
     
     // If previous state was jump or dance, go to idle instead
     if (this._prevState && (this._prevState.Name === 'jump' || this._prevState.Name === 'dance')) {
@@ -828,6 +883,17 @@ class ThirdPersonCameraDemo {
     this._threejs.setSize(window.innerWidth, window.innerHeight);
 
     document.body.appendChild(this._threejs.domElement);
+
+    // Prevent default touch behavior on the canvas
+    this._threejs.domElement.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+    }, { passive: false });
+    this._threejs.domElement.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+    }, { passive: false });
+    this._threejs.domElement.addEventListener('touchend', (e) => {
+      e.preventDefault();
+    }, { passive: false });
 
     window.addEventListener('resize', () => {
       this._OnWindowResize();
