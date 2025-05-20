@@ -295,6 +295,10 @@ class BasicCharacterControllerInput {
     this._touchStartY = 0;
     this._touchEndX = 0;
     this._touchEndY = 0;
+    this._touchStartTime = 0;
+    this._isSwiping = false;
+    this._swipeThreshold = 30; // Minimum distance for a swipe
+    this._tapThreshold = 300; // Maximum time for a tap (in milliseconds)
     
     // Initialize neutral zone with actual dimensions
     const neutralTouch = document.getElementById('neutralTouch');
@@ -317,9 +321,9 @@ class BasicCharacterControllerInput {
     // Add touch event listeners to touch overlay
     const touchOverlay = document.getElementById('touchOverlay');
     if (touchOverlay) {
-      touchOverlay.addEventListener('touchstart', (e) => this._onTouchStart(e), { passive: false });
-      touchOverlay.addEventListener('touchend', (e) => this._onTouchEnd(e), { passive: false });
-      touchOverlay.addEventListener('touchmove', (e) => this._onTouchMove(e), { passive: false });
+      touchOverlay.addEventListener('touchstart', (e) => this._onTouchStart(e), { passive: true });
+      touchOverlay.addEventListener('touchend', (e) => this._onTouchEnd(e), { passive: true });
+      touchOverlay.addEventListener('touchmove', (e) => this._onTouchMove(e), { passive: true });
     }
   }
 
@@ -365,10 +369,11 @@ class BasicCharacterControllerInput {
   }
 
   _onTouchStart(event) {
-    event.preventDefault();
     this._isMobile = true;
     this._touchStartX = event.touches[0].clientX;
     this._touchStartY = event.touches[0].clientY;
+    this._touchStartTime = Date.now();
+    this._isSwiping = false;
 
     // Check which side of the screen was touched
     const touchX = event.touches[0].clientX;
@@ -384,26 +389,42 @@ class BasicCharacterControllerInput {
   }
 
   _onTouchEnd(event) {
-    event.preventDefault();
     this._isMobile = true;
     this._touchEndX = event.changedTouches[0].clientX;
     this._touchEndY = event.changedTouches[0].clientY;
     
+    const touchDuration = Date.now() - this._touchStartTime;
+    const touchDistance = Math.sqrt(
+      Math.pow(this._touchEndX - this._touchStartX, 2) +
+      Math.pow(this._touchEndY - this._touchStartY, 2)
+    );
+
+    // If it's a short touch with little movement, treat it as a tap
+    if (!this._isSwiping && touchDuration < this._tapThreshold && touchDistance < this._swipeThreshold) {
+      if (this._isInNeutralZone(this._touchEndX, this._touchEndY)) {
+        this._isJumpRequested = true;
+      }
+    }
+    
     // Reset movement keys
     this._keys.left = false;
     this._keys.right = false;
-    
-    // Check if touch ended in neutral zone for jump
-    if (this._isInNeutralZone(this._touchEndX, this._touchEndY)) {
-      this._isJumpRequested = true;
-    }
   }
 
   _onTouchMove(event) {
-    event.preventDefault();
     this._isMobile = true;
     this._touchEndX = event.touches[0].clientX;
     this._touchEndY = event.touches[0].clientY;
+
+    const touchDistance = Math.sqrt(
+      Math.pow(this._touchEndX - this._touchStartX, 2) +
+      Math.pow(this._touchEndY - this._touchStartY, 2)
+    );
+
+    // If movement exceeds threshold, mark as swiping
+    if (touchDistance > this._swipeThreshold) {
+      this._isSwiping = true;
+    }
 
     // Update movement based on touch position
     const touchX = event.touches[0].clientX;
