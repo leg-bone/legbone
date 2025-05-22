@@ -53,8 +53,16 @@ class BasicCharacterController {
     this._autoJumpTriggered = false;
     this._initialFallStarted = false;
     this._gameStartTime = Date.now();
-    this._minHeightDuration = 3.8; // 5 seconds
+    this._minHeightDuration = 3.1; // 5 seconds
     this._minHeightAboveCube = 1.0; // 2 units above cube surface
+    this._slowdownTimer = 0;
+    this._slowdownDuration = 3.0;
+    this._isSlowedDown = false;
+    this._autoDanceTimer = 0;
+    this._autoDanceDelay = 3.2;
+    this._slowChargeTimer = 0;
+    this._slowChargeDuration = 7.0;
+    this._slowChargeAmount = 1.0;
 
     this._animations = {};
     this._input = new BasicCharacterControllerInput();
@@ -62,6 +70,80 @@ class BasicCharacterController {
         new BasicCharacterControllerProxy(this._animations));
 
     this._LoadModels();
+    this._CreateSlowChargeMeter();
+  }
+
+  _CreateSlowChargeMeter() {
+    // Create container
+    const container = document.createElement('div');
+    container.id = 'slowChargeContainer';
+    container.style.position = 'fixed';
+    container.style.bottom = '30px';
+    container.style.left = '50%';
+    container.style.transform = 'translateX(-50%)';
+    container.style.width = '200px';
+    container.style.height = '20px';
+    container.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+    container.style.borderRadius = '0px';
+    container.style.overflow = 'hidden';
+    container.style.zIndex = '1000';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    document.body.appendChild(container);
+
+    // Create fill element
+    const fill = document.createElement('div');
+    fill.id = 'slowChargeFill';
+    fill.style.width = '100%';
+    fill.style.height = '100%';
+    fill.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    fill.style.transition = 'width 0.1s linear, box-shadow 0.5s ease-in-out';
+    fill.style.position = 'absolute';
+    fill.style.left = '0';
+    fill.style.top = '0';
+    container.appendChild(fill);
+
+    // Create text element
+    const text = document.createElement('div');
+    text.textContent = 'SLO-MO';
+    text.style.position = 'absolute';
+    text.style.color = 'black';
+    text.style.letterSpacing = '.9em';
+    text.style.fontFamily = 'pixel';
+    text.style.fontSize = '15px';
+    text.style.textShadow = '1px 1px 2px rgba(255, 255, 255, 0.9)';
+    text.style.zIndex = '1001';
+    text.style.transition = 'text-shadow 0.5s ease-in-out';
+    container.appendChild(text);
+
+    // Add animation for pulsing glow
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pulseGlow {
+        0% {
+          box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+        }
+        50% {
+          box-shadow: 2px 2px 15px rgba(255, 255, 255, 0.8);
+        }
+        100% {
+          box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+        }
+      }
+      @keyframes pulseText {
+        0% {
+          text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3);
+        }
+        50% {
+          text-shadow: 8px 8px 8px rgba(255, 255, 255, 1);
+        }
+        100% {
+          text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.9);
+        }
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   _LoadModels() {
@@ -236,6 +318,49 @@ class BasicCharacterController {
       }
     }
 
+    // Handle auto-dance at 3.5 seconds
+    if (this._hasSpawned && !this._autoDanceTriggered) {
+      this._autoDanceTimer += timeInSeconds;
+      if (this._autoDanceTimer >= this._autoDanceDelay) {
+        this._autoDanceTriggered = true;
+        this._stateMachine.SetState('dance');
+      }
+    }
+
+    // Update slowdown timer
+    if (this._isSlowedDown) {
+      this._slowdownTimer += timeInSeconds;
+      if (this._slowdownTimer >= this._slowdownDuration) {
+        this._isSlowedDown = false;
+        this._slowdownTimer = 0;
+        // Reset all time scales
+        Object.values(this._animations).forEach(anim => {
+          anim.action.getMixer().timeScale = 1.0;
+        });
+      }
+    }
+
+    // Update slow charge
+    if (!this._isSlowedDown && this._slowChargeAmount < 1.0) {
+      this._slowChargeTimer += timeInSeconds;
+      this._slowChargeAmount = Math.min(1.0, this._slowChargeTimer / this._slowChargeDuration);
+      // Update UI
+      const fill = document.getElementById('slowChargeFill');
+      const text = fill.parentElement.querySelector('div');
+      if (fill) {
+        fill.style.width = `${this._slowChargeAmount * 100}%`;
+        
+        // Add/remove pulsing animation based on charge
+        if (this._slowChargeAmount >= 1.0) {
+          fill.style.animation = 'pulseGlow 2s infinite';
+          text.style.animation = 'pulseText 2s infinite';
+        } else {
+          fill.style.animation = 'none';
+          text.style.animation = 'none';
+        }
+      }
+    }
+
     // Update jump cooldown
     if (this._jumpCooldown > 0) {
       this._jumpCooldown -= timeInSeconds;
@@ -291,14 +416,35 @@ class BasicCharacterController {
     // Only allow movement after we've properly spawned
     if (this._hasSpawned) {
       // Automatic forward movement with speed control
-      if (this._input._keys.backward) {
+      if (this._input._keys.backward && this._slowChargeAmount >= 1.0) {
         velocity.z = this._slowMoveSpeed;
+        // Initiate slowdown
+        if (!this._isSlowedDown) {
+          this._isSlowedDown = true;
+          this._slowdownTimer = 0;
+          this._slowChargeAmount = 0.0;
+          this._slowChargeTimer = 0;
+          // Update UI
+          const fill = document.getElementById('slowChargeFill');
+          if (fill) {
+            fill.style.width = '0%';
+          }
+          // Slow down all animations
+          Object.values(this._animations).forEach(anim => {
+            anim.action.getMixer().timeScale = 0.5;
+          });
+        }
       } else if (this._stateMachine._currentState.Name === 'run') {
         velocity.z = this._runSpeed;
       } else if (this._stateMachine._currentState.Name === 'jump') {
         velocity.z = this._jumpSpeed;
       } else {
         velocity.z = this._autoMoveSpeed;
+      }
+
+      // Apply slowdown to velocity if active
+      if (this._isSlowedDown) {
+        velocity.z *= 0.5;
       }
 
       // Use different turn speeds for desktop and mobile
@@ -367,10 +513,13 @@ class BasicCharacterControllerInput {
     this._touchEndY = 0;
     this._touchStartTime = 0;
     this._isSwiping = false;
-    this._swipeThreshold = 30; // Minimum distance for a swipe
-    this._tapThreshold = 300; // Maximum time for a tap (in milliseconds)
+    this._swipeThreshold = 30;
+    this._tapThreshold = 300;
     this._jumpInputLocked = false;
-    this._jumpInputLockDuration = 1500; // 2 seconds in ms
+    this._jumpInputLockDuration = 1500;
+    this._activeTouches = new Map();
+    this._gameStartTime = Date.now();
+    this._jumpDelay = 10.0; // 10 seconds before user jumps are allowed
     
     // Initialize neutral zone with actual dimensions
     const neutralTouch = document.getElementById('neutralTouch');
@@ -401,7 +550,8 @@ class BasicCharacterControllerInput {
 
   _onKeyDown(event) {
     if (event.keyCode === 32) { // space
-      if (!this._jumpInputLocked) {
+      const currentTime = (Date.now() - this._gameStartTime) / 1000;
+      if (!this._jumpInputLocked && currentTime >= this._jumpDelay) {
         this._keys.space = true;
         this._isJumpRequested = true;
         this._jumpInputLocked = true;
@@ -444,42 +594,58 @@ class BasicCharacterControllerInput {
     }
   }
 
-  _onTouchStart(event) {
-    this._isMobile = true;
-    this._touchStartX = event.touches[0].clientX;
-    this._touchStartY = event.touches[0].clientY;
-    this._touchStartTime = Date.now();
-    this._isSwiping = false;
-
-    // Check which side of the screen was touched
-    const touchX = event.touches[0].clientX;
-    const touchY = event.touches[0].clientY;
+  _getTouchZone(touchX, touchY) {
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     
-    // Left/right movement zones
-    if (touchX < screenWidth * 0.3) {
-      this._keys.left = true;
-      this._keys.right = false;
-    } else if (touchX > screenWidth * 0.7) {
-      this._keys.left = false;
-      this._keys.right = true;
-    } else {
-      // Center zone actions based on vertical position
-      if (touchY < screenHeight * 0.4) {
-        // Top 40% - Jump (same as space)
-        if (!this._jumpInputLocked) {
-          this._keys.space = true;
-          this._isJumpRequested = true;
-          this._jumpInputLocked = true;
-          setTimeout(() => { this._jumpInputLocked = false; }, this._jumpInputLockDuration);
-        }
-      } else if (touchY < screenHeight * 0.8) {
-        // Middle 40% - Sprint
-        this._keys.forward = true;
-      } else {
-        // Bottom 20% - Dance (same as backward)
-        this._keys.backward = true;
+    if (touchX < screenWidth * 0.3) return 'left';
+    if (touchX > screenWidth * 0.7) return 'right';
+    if (touchY < screenHeight * 0.4) return 'jump';
+    if (touchY < screenHeight * 0.8) return 'forward';
+    return 'backward';
+  }
+
+  _onTouchStart(event) {
+    this._isMobile = true;
+    
+    // Handle each touch point
+    for (let i = 0; i < event.touches.length; i++) {
+      const touch = event.touches[i];
+      const touchId = touch.identifier;
+      const touchX = touch.clientX;
+      const touchY = touch.clientY;
+      
+      // Store touch info
+      this._activeTouches.set(touchId, {
+        x: touchX,
+        y: touchY,
+        zone: this._getTouchZone(touchX, touchY)
+      });
+
+      // Set appropriate key based on zone
+      const zone = this._getTouchZone(touchX, touchY);
+      switch(zone) {
+        case 'left':
+          this._keys.left = true;
+          break;
+        case 'right':
+          this._keys.right = true;
+          break;
+        case 'jump':
+          const currentTime = (Date.now() - this._gameStartTime) / 1000;
+          if (!this._jumpInputLocked && currentTime >= this._jumpDelay) {
+            this._keys.space = true;
+            this._isJumpRequested = true;
+            this._jumpInputLocked = true;
+            setTimeout(() => { this._jumpInputLocked = false; }, this._jumpInputLockDuration);
+          }
+          break;
+        case 'forward':
+          this._keys.forward = true;
+          break;
+        case 'backward':
+          this._keys.backward = true;
+          break;
       }
     }
   }
@@ -487,41 +653,103 @@ class BasicCharacterControllerInput {
   _onTouchEnd(event) {
     this._isMobile = true;
     
-    // Reset movement keys
-    this._keys.left = false;
-    this._keys.right = false;
-    this._keys.space = false;
-    this._keys.backward = false;
+    // Handle each ended touch
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      const touch = event.changedTouches[i];
+      const touchId = touch.identifier;
+      const touchInfo = this._activeTouches.get(touchId);
+      
+      if (touchInfo) {
+        // Reset the key for this touch's zone
+        switch(touchInfo.zone) {
+          case 'left':
+            this._keys.left = false;
+            break;
+          case 'right':
+            this._keys.right = false;
+            break;
+          case 'jump':
+            this._keys.space = false;
+            break;
+          case 'forward':
+            this._keys.forward = false;
+            break;
+          case 'backward':
+            this._keys.backward = false;
+            break;
+        }
+        
+        // Remove the touch from active touches
+        this._activeTouches.delete(touchId);
+      }
+    }
   }
 
   _onTouchMove(event) {
     this._isMobile = true;
-    this._touchEndX = event.touches[0].clientX;
-    this._touchEndY = event.touches[0].clientY;
-
-    const touchDistance = Math.sqrt(
-      Math.pow(this._touchEndX - this._touchStartX, 2) +
-      Math.pow(this._touchEndY - this._touchStartY, 2)
-    );
-
-    // If movement exceeds threshold, mark as swiping
-    if (touchDistance > this._swipeThreshold) {
-      this._isSwiping = true;
-    }
-
-    // Update movement based on touch position
-    const touchX = event.touches[0].clientX;
-    const screenWidth = window.innerWidth;
     
-    if (touchX < screenWidth * 0.3) {
-      this._keys.left = true;
-      this._keys.right = false;
-    } else if (touchX > screenWidth * 0.7) {
-      this._keys.left = false;
-      this._keys.right = true;
-    } else {
-      this._keys.left = false;
-      this._keys.right = false;
+    // Update each active touch
+    for (let i = 0; i < event.touches.length; i++) {
+      const touch = event.touches[i];
+      const touchId = touch.identifier;
+      const touchX = touch.clientX;
+      const touchY = touch.clientY;
+      
+      // Get old touch info
+      const oldTouchInfo = this._activeTouches.get(touchId);
+      if (oldTouchInfo) {
+        // Reset old zone's key
+        switch(oldTouchInfo.zone) {
+          case 'left':
+            this._keys.left = false;
+            break;
+          case 'right':
+            this._keys.right = false;
+            break;
+          case 'jump':
+            this._keys.space = false;
+            break;
+          case 'forward':
+            this._keys.forward = false;
+            break;
+          case 'backward':
+            this._keys.backward = false;
+            break;
+        }
+      }
+      
+      // Update touch info with new position
+      const newZone = this._getTouchZone(touchX, touchY);
+      this._activeTouches.set(touchId, {
+        x: touchX,
+        y: touchY,
+        zone: newZone
+      });
+      
+      // Set new zone's key
+      switch(newZone) {
+        case 'left':
+          this._keys.left = true;
+          break;
+        case 'right':
+          this._keys.right = true;
+          break;
+        case 'jump':
+          const currentTime = (Date.now() - this._gameStartTime) / 1000;
+          if (!this._jumpInputLocked && currentTime >= this._jumpDelay) {
+            this._keys.space = true;
+            this._isJumpRequested = true;
+            this._jumpInputLocked = true;
+            setTimeout(() => { this._jumpInputLocked = false; }, this._jumpInputLockDuration);
+          }
+          break;
+        case 'forward':
+          this._keys.forward = true;
+          break;
+        case 'backward':
+          this._keys.backward = true;
+          break;
+      }
     }
   }
 
@@ -630,11 +858,9 @@ class DanceState extends State {
       curAction.reset();  
       curAction.setLoop(THREE.LoopOnce, 1);
       curAction.clampWhenFinished = true;
-      curAction.timeScale = 0.2; // Slow down the dance animation
       curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
     } else {
-      curAction.timeScale = 0.2; // Slow down the dance animation
       curAction.play();
     }
   }
@@ -646,33 +872,8 @@ class DanceState extends State {
     const curAction = this._parent._proxy._animations['dance'].action;
     curAction.getMixer().timeScale = 1.0;
     
-    // If previous state was jump or dance, go to idle instead
-    if (this._prevState && (this._prevState.Name === 'jump' || this._prevState.Name === 'dance')) {
-      const idleAction = this._parent._proxy._animations['idle'].action;
-      const curAction = this._parent._proxy._animations['dance'].action;
-      
-      idleAction.reset();
-      idleAction.setEffectiveTimeScale(1.0);
-      idleAction.setEffectiveWeight(1.0);
-      idleAction.crossFadeFrom(curAction, 0.5, true);
-      idleAction.play();
-      
-      this._parent.SetState('idle');
-    } else if (this._prevState) {
-      // Normal transition back to previous state
-      const prevAction = this._parent._proxy._animations[this._prevState.Name].action;
-      const curAction = this._parent._proxy._animations['dance'].action;
-      
-      prevAction.reset();
-      prevAction.setEffectiveTimeScale(1.0);
-      prevAction.setEffectiveWeight(1.0);
-      prevAction.crossFadeFrom(curAction, 0.5, true);
-      prevAction.play();
-      
-      this._parent.SetState(this._prevState.Name);
-    } else {
-      this._parent.SetState('idle');
-    }
+    // Always transition to walk state after dance
+    this._parent.SetState('walk');
   }
 
   _Cleanup() {
@@ -740,10 +941,6 @@ class WalkState extends State {
       this._parent.SetState('run');
       return;
     }
-    if (input._keys.backward) {
-      this._parent.SetState('dance');
-      return;
-    }
   }
 
   get CanJump() {
@@ -755,11 +952,9 @@ class WalkState extends State {
 class RunState extends State {
   constructor(parent) {
     super(parent);
-    this._sprintTimer = 0;
-    this._sprintDuration = 5.0;
-    this._sprintCooldown = 0;
-    this._sprintCooldownTime = 1.5;
-    this._isSprinting = false;
+    this._exitTimer = 0;
+    this._exitDelay = 1.0;
+    this._isExiting = false;
   }
 
   get Name() {
@@ -767,6 +962,9 @@ class RunState extends State {
   }
 
   Enter(prevState) {
+    this._isExiting = false;
+    this._exitTimer = 0;
+    
     const curAction = this._parent._proxy._animations['run'].action;
     if (prevState) {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
@@ -794,43 +992,24 @@ class RunState extends State {
 
   Update(timeElapsed, input) {
     if (input._isMobile) {
-      // Handle sprint timing for mobile
-      if (input._keys.forward && !this._isSprinting && this._sprintCooldown <= 0) {
-        // Start sprint
-        this._isSprinting = true;
-        this._sprintTimer = this._sprintDuration;
+      if (!input._keys.forward && !this._isExiting) {
+        this._isExiting = true;
+        this._exitTimer = 0;
       }
 
-      if (this._isSprinting) {
-        this._sprintTimer -= timeElapsed;
-        if (this._sprintTimer <= 0) {
-          // End sprint and start cooldown
-          this._isSprinting = false;
-          this._sprintCooldown = this._sprintCooldownTime;
-          input._keys.forward = false; // Reset forward key
+      if (this._isExiting) {
+        this._exitTimer += timeElapsed;
+        if (this._exitTimer >= this._exitDelay) {
           this._parent.SetState('walk');
           return;
         }
-      } else if (this._sprintCooldown > 0) {
-        this._sprintCooldown -= timeElapsed;
-      }
-
-      // If not sprinting and no forward key, go to walk
-      if (!this._isSprinting && !input._keys.forward) {
-        this._parent.SetState('walk');
-        return;
       }
     } else {
-      // Desktop behavior
+      // Desktop behavior - immediate exit
       if (!input._keys.forward) {
         this._parent.SetState('walk');
         return;
       }
-    }
-
-    if (input._keys.backward) {
-      this._parent.SetState('dance');
-      return;
     }
   }
 };
@@ -1070,6 +1249,70 @@ class ThirdPersonCameraDemo {
     this._Initialize();
   }
 
+  _ResetGame() {
+    // Reset character position and state
+    if (this._controls) {
+      this._controls._target.position.set(0, this._controls._initialSpawnHeight, 0);
+      this._controls._velocity.set(0, 0, 0);
+      // Reset rotation to initial state
+      this._controls._target.quaternion.set(0, 0, 0, 1);
+      this._controls._hasSpawned = false;
+      this._controls._score = 0;
+      this._controls._lastZ = 0;
+      this._controls._isScoringEnabled = true;
+      this._controls._jumpCooldown = 0;
+      this._controls._autoJumpTimer = 0;
+      this._controls._autoJumpTriggered = false;
+      this._controls._initialFallStarted = false;
+      this._controls._gameStartTime = Date.now();
+      this._controls._autoDanceTimer = 0;
+      this._controls._autoDanceTriggered = false;
+      this._controls._slowChargeAmount = 1.0;
+      this._controls._slowChargeTimer = 0;
+      this._controls._isSlowedDown = false;
+      this._controls._slowdownTimer = 0;
+      this._controls._stateMachine.SetState('walk');
+    }
+
+    // Reset path
+    this._pathSegments.forEach(seg => {
+      this._scene.remove(seg.mesh);
+      this._scene.remove(seg.collision);
+    });
+    this._pathSegments = [];
+    this._headPos = new THREE.Vector3(0, 0, 60);
+    this._direction = 'z';
+    this._pathCount = 1;
+    this._CreatePathSegment(this._headPos.clone());
+
+    // Reset game state
+    this._isFalling = false;
+    this._timeStarted = false;
+    this._startTime = Date.now();
+    this._elapsedTime = 0;
+
+    // Reset UI
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    if (scoreDisplay) {
+      scoreDisplay.textContent = '';
+    }
+    const restartButton = document.getElementById('restartButton');
+    if (restartButton) {
+      restartButton.style.display = 'none';
+    }
+
+    // Reset slow-mo charge bar
+    const fill = document.getElementById('slowChargeFill');
+    if (fill) {
+      fill.style.width = '100%';
+      fill.style.animation = 'pulseGlow 2s infinite';
+      const text = fill.parentElement.querySelector('div');
+      if (text) {
+        text.style.animation = 'pulseText 2s infinite';
+      }
+    }
+  }
+
   _Initialize() {
     this._threejs = new THREE.WebGLRenderer({
       antialias: true,
@@ -1096,7 +1339,7 @@ class ThirdPersonCameraDemo {
     controlOverlay.style.alignItems = 'center';
     controlOverlay.style.justifyContent = 'center';
     controlOverlay.style.zIndex = '2000';
-    controlOverlay.style.transition = 'opacity 1.5s ease-in-out';
+    controlOverlay.style.transition = 'opacity 0.75s ease-in-out';
     controlOverlay.style.fontFamily = 'pixel';
     controlOverlay.style.color = 'white';
     document.body.appendChild(controlOverlay);
@@ -1189,13 +1432,13 @@ class ThirdPersonCameraDemo {
     }
     animateControls();
 
-    // Automatically fade out after 5 seconds
+    // Automatically fade out after 2.5 seconds
     setTimeout(() => {
       controlOverlay.style.opacity = '0';
       setTimeout(() => {
         controlOverlay.style.display = 'none';
-      }, 1500); // Wait for fade animation to complete
-    }, 5000);
+      }, 750); // Wait for fade animation to complete
+    }, 2777);
 
     // Create score display
     const scoreDisplay = document.createElement('div');
@@ -1228,7 +1471,7 @@ class ThirdPersonCameraDemo {
     restartButton.style.cursor = 'pointer';
     restartButton.style.color = 'white';
     restartButton.style.fontFamily = 'pixel';
-    restartButton.style.display = 'none'; // Initially hidden
+    restartButton.style.display = 'none';
     restartButton.style.transition = 'all 0.3s ease';
     restartButton.style.boxShadow = 'none';
     restartButton.addEventListener('mouseover', () => {
@@ -1244,29 +1487,13 @@ class ThirdPersonCameraDemo {
       restartButton.style.transform = 'scale(1.2)';
       restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
       
-      // Wait for animation to complete before reloading
+      // Wait for animation to complete before resetting
       setTimeout(() => {
-        window.location.reload();
+        this._ResetGame();
+        restartButton.style.transform = 'scale(1)';
       }, 200);
     });
     document.body.appendChild(restartButton);
-
-    // Create mute button
-    const muteButton = document.createElement('button');
-    muteButton.id = 'muteButton';
-    muteButton.innerHTML = '🔇'; // Always start muted
-    muteButton.style.position = 'fixed';
-    muteButton.style.top = '20px';
-    muteButton.style.right = '20px';
-    muteButton.style.zIndex = '1000';
-    muteButton.style.padding = '10px';
-    muteButton.style.fontSize = '20px';
-    muteButton.style.border = 'none';
-    muteButton.style.borderRadius = '0%';
-    muteButton.style.backgroundColor = 'rgba(255, 255, 255, 0)';
-    muteButton.style.cursor = 'pointer';
-    muteButton.style.color = 'white';
-    document.body.appendChild(muteButton);
 
     // Prevent default touch behavior on the canvas
     this._threejs.domElement.addEventListener('touchstart', (e) => {
@@ -1313,6 +1540,8 @@ class ThirdPersonCameraDemo {
     const backgroundMusic = new THREE.Audio(listener);
     const audioLoader = new THREE.AudioLoader();
     let audioStarted = false;
+    let isMuted = true; // Always start muted
+    let hasInteracted = false; // Track if user has interacted
 
     // Function to start audio
     const startAudio = () => {
@@ -1327,25 +1556,60 @@ class ThirdPersonCameraDemo {
       }
     };
 
-    // Start audio on first user interaction
-    const startAudioOnInteraction = () => {
-      startAudio();
-      document.removeEventListener('touchstart', startAudioOnInteraction);
-      document.removeEventListener('click', startAudioOnInteraction);
+    // Create mute button
+    const muteButton = document.createElement('button');
+    muteButton.id = 'muteButton';
+    muteButton.innerHTML = '🔇'; // Always start muted
+    muteButton.style.position = 'fixed';
+    muteButton.style.top = '20px';
+    muteButton.style.right = '20px';
+    muteButton.style.zIndex = '1000';
+    muteButton.style.padding = '10px';
+    muteButton.style.fontSize = '20px';
+    muteButton.style.border = 'none';
+    muteButton.style.borderRadius = '0%';
+    muteButton.style.backgroundColor = 'rgba(255, 255, 255, 0)';
+    muteButton.style.cursor = 'pointer';
+    muteButton.style.color = 'white';
+    document.body.appendChild(muteButton);
+
+    // Function to handle first interaction
+    const handleFirstInteraction = () => {
+      if (!hasInteracted) {
+        hasInteracted = true;
+        // Only unmute on desktop
+        if (!/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+          isMuted = false;
+          muteButton.innerHTML = '🔊';
+          if (!audioStarted) {
+            startAudio();
+          }
+          backgroundMusic.setVolume(0.65);
+        }
+      }
     };
 
-    // Add event listeners for both touch and click
-    document.addEventListener('touchstart', startAudioOnInteraction);
-    document.addEventListener('click', startAudioOnInteraction);
-
     // Add mute button functionality
-    let isMuted = true; // Always start muted
     muteButton.addEventListener('click', () => {
       isMuted = !isMuted;
       muteButton.innerHTML = isMuted ? '🔇' : '🔊';
-      if (backgroundMusic.isPlaying) {
-        backgroundMusic.setVolume(isMuted ? 0 : 0.65);
+      
+      if (isMuted) {
+        if (backgroundMusic.isPlaying) {
+          backgroundMusic.setVolume(0);
+        }
+      } else {
+        if (!audioStarted) {
+          startAudio();
+        }
+        backgroundMusic.setVolume(0.65);
       }
+    });
+
+    // Add interaction listeners
+    const interactionEvents = ['keydown', 'mousedown', 'touchstart'];
+    interactionEvents.forEach(eventType => {
+      document.addEventListener(eventType, handleFirstInteraction, { once: true });
     });
 
     // Setup bloom effect
@@ -1383,17 +1647,24 @@ class ThirdPersonCameraDemo {
 
     // Add permanent starting cube
     const startCube = new THREE.Mesh(
-      new THREE.BoxGeometry(120, 1000, 120),
+      new THREE.BoxGeometry(120, 1000, 130),
       new THREE.MeshStandardMaterial({
-        color: 0x18191A,
-        emissive: 0x18191A,
-        emissiveIntensity: 1.0,
-        metalness: 1.0,
-        roughness: 0.0,
+        color: 0xFFFFFF, // Change to white to show texture colors
+        emissive: 0x000000, // Remove emissive to show texture
+        emissiveIntensity: 0.0,
+        metalness: 0.2, // Reduce metalness to show texture better
+        roughness: 0.8, // Increase roughness to show texture better
         transparent: false,
-        toneMapped: false,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.0
+        toneMapped: true, // Enable tone mapping
+        clearcoat: 0.0, // Remove clearcoat to show texture better
+        clearcoatRoughness: 0.0,
+        map: new THREE.TextureLoader().load('./resources/skyscraper.png', (texture) => {
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(1, 8); // Repeat texture vertically
+          texture.encoding = THREE.sRGBEncoding;
+          texture.needsUpdate = true;
+        })
       })
     );
     startCube.position.set(0, -499, 60); // Position it below the starting point
@@ -1436,7 +1707,7 @@ class ThirdPersonCameraDemo {
     this._elapsedTime = 0;
     this._isFalling = false;
     this._timeStarted = false;
-    this._timeStartDelay = 6060; // 7 seconds in milliseconds
+    this._timeStartDelay = 1400; // 7 seconds in milliseconds
 
     this._LoadAnimatedModel();
     this._RAF();
