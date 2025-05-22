@@ -32,6 +32,7 @@ class BasicCharacterController {
     this._autoMoveSpeed = 40.0;
     this._slowMoveSpeed = 20.0;
     this._runSpeed = 60.0;
+    this._jumpSpeed = 80.0;
     this._gravity = -39.2;
     this._isGrounded = false;
     this._raycaster = new THREE.Raycaster();
@@ -40,11 +41,20 @@ class BasicCharacterController {
     this._planeY = 0;
     this._desktopTurnSpeed = 0.5;
     this._mobileTurnSpeed = 0.5;
-    this._initialSpawnHeight = 100.0; // Start much higher
+    this._initialSpawnHeight = 100.0;
     this._hasSpawned = false;
     this._score = 0;
     this._lastZ = 0;
     this._isScoringEnabled = true;
+    this._jumpCooldown = 0;
+    this._jumpCooldownDuration = 1.5;
+    this._autoJumpTimer = 0;
+    this._autoJumpDelay = 0.0;
+    this._autoJumpTriggered = false;
+    this._initialFallStarted = false;
+    this._gameStartTime = Date.now();
+    this._minHeightDuration = 3.8; // 5 seconds
+    this._minHeightAboveCube = 1.0; // 2 units above cube surface
 
     this._animations = {};
     this._input = new BasicCharacterControllerInput();
@@ -80,7 +90,7 @@ class BasicCharacterController {
   
         this._animations[animName] = {
           clip: clip,
-          action: action,
+          action: action
         };
       };
 
@@ -109,21 +119,48 @@ class BasicCharacterController {
   _CheckGroundCollision() {
     if (!this._target) return;
 
-    // Cast multiple rays in a small pattern around the character
+    // Find the starting cube
+    const startCube = this._params.scene.children.find(child => 
+      child instanceof THREE.Mesh && 
+      child.geometry instanceof THREE.BoxGeometry && 
+      child.position.y === -499
+    );
+
+    // Check if we're in the first 5 seconds
+    const currentTime = (Date.now() - this._gameStartTime) / 1000; // Convert to seconds
+    if (startCube && currentTime < this._minHeightDuration) {
+      const cubeTop = startCube.position.y + (startCube.geometry.parameters.height / 2);
+      const minAllowedHeight = cubeTop + this._minHeightAboveCube;
+      
+      // If character is below minimum height, push them up
+      if (this._target.position.y < minAllowedHeight) {
+        this._target.position.y = minAllowedHeight;
+        this._velocity.y = 0;
+        this._isGrounded = true;
+        return;
+      }
+    }
+
+    // Cast multiple rays in a pattern around the character
     const rayStart = this._target.position.clone();
-    rayStart.y += 0.1;
+    rayStart.y += 0.1; // Slightly above character's feet
     
-    // Create a pattern of ray origins
+    // Create a pattern of ray origins for more reliable collision detection
     const rayOrigins = [
       new THREE.Vector3(0, 0, 0),      // Center
       new THREE.Vector3(1, 0, 1),      // Front right
       new THREE.Vector3(-1, 0, 1),     // Front left
       new THREE.Vector3(1, 0, -1),     // Back right
-      new THREE.Vector3(-1, 0, -1)     // Back left
+      new THREE.Vector3(-1, 0, -1),    // Back left
+      new THREE.Vector3(0, 0, 1),      // Front
+      new THREE.Vector3(0, 0, -1),     // Back
+      new THREE.Vector3(1, 0, 0),      // Right
+      new THREE.Vector3(-1, 0, 0)      // Left
     ];
 
     let hitGround = false;
     let minDistance = Infinity;
+    let hitPoint = new THREE.Vector3();
 
     // Check each ray
     for (const offset of rayOrigins) {
@@ -132,27 +169,37 @@ class BasicCharacterController {
       
       const collisionMeshes = this._params.scene.children.filter(obj => 
         obj.type === 'Mesh' && 
-        (obj.material.visible === false || obj.geometry instanceof THREE.BoxGeometry)
+        (obj.material.visible === false || 
+         obj.geometry instanceof THREE.BoxGeometry || 
+         obj.geometry instanceof THREE.PlaneGeometry ||
+         obj.userData.isSolid)
       );
       
       const intersects = this._raycaster.intersectObjects(collisionMeshes, true);
 
       if (intersects.length > 0) {
         hitGround = true;
-        minDistance = Math.min(minDistance, intersects[0].distance);
+        if (intersects[0].distance < minDistance) {
+          minDistance = intersects[0].distance;
+          hitPoint.copy(intersects[0].point);
+        }
       }
     }
 
     if (hitGround) {
+      // Add a small buffer to prevent falling through
+      const groundBuffer = 0.2;
+      
       if (minDistance < 1.0 && this._velocity.y <= 0) {
         this._isGrounded = true;
-        this._target.position.y = rayStart.y - minDistance + 0.1;
+        this._target.position.y = hitPoint.y + groundBuffer;
         this._velocity.y = 0;
         
         // If this is the first time we've hit ground, mark as spawned
         if (!this._hasSpawned) {
           this._hasSpawned = true;
-          this._target.position.y += 1.0; // Small bounce to ensure we're above ground
+          this._target.position.y += 0.5; // Small bounce to ensure we're above ground
+          this._velocity.y = 2.0; // Small upward velocity for the bounce
         }
       } else {
         this._isGrounded = false;
@@ -175,15 +222,36 @@ class BasicCharacterController {
       return;
     }
 
+    // Handle auto-jump during initial fall
+    if (!this._hasSpawned && !this._autoJumpTriggered && this._target && this._target.position.y < this._initialSpawnHeight) {
+      if (!this._initialFallStarted) {
+        this._initialFallStarted = true;
+        this._autoJumpTimer = 0;
+      }
+      
+      this._autoJumpTimer += timeInSeconds;
+      if (this._autoJumpTimer >= this._autoJumpDelay) {
+        this._autoJumpTriggered = true;
+        this._input._isJumpRequested = true;
+      }
+    }
+
+    // Update jump cooldown
+    if (this._jumpCooldown > 0) {
+      this._jumpCooldown -= timeInSeconds;
+    }
+
     this._stateMachine.Update(timeInSeconds, this._input);
 
-    // Handle jump request
+    // Handle jump request - only allow if not in jump state and cooldown is finished
     if (this._input._isJumpRequested && 
         this._stateMachine._currentState.Name !== 'jump' && 
         this._stateMachine._currentState.Name !== 'fall' &&
-        !this._stateMachine._currentState._isJumping) {
+        this._jumpCooldown <= 0 &&
+        (this._stateMachine._currentState.Name !== 'walk' || this._stateMachine._currentState.CanJump)) {
       this._stateMachine.SetState('jump');
       this._input._isJumpRequested = false;
+      this._jumpCooldown = this._jumpCooldownDuration;
     }
 
     // Update scoring state based on current state
@@ -193,8 +261,8 @@ class BasicCharacterController {
       this._isScoringEnabled = true;
     }
 
-    // Apply gravity
-    if (!this._isGrounded) {
+    // Apply gravity only if not disabled
+    if (!this._isGrounded && !this._stateMachine._currentState._gravityDisabled) {
       this._velocity.y += this._gravity * timeInSeconds;
     }
 
@@ -223,26 +291,28 @@ class BasicCharacterController {
     // Only allow movement after we've properly spawned
     if (this._hasSpawned) {
       // Automatic forward movement with speed control
-    if (this._input._keys.backward) {
+      if (this._input._keys.backward) {
         velocity.z = this._slowMoveSpeed;
       } else if (this._stateMachine._currentState.Name === 'run') {
         velocity.z = this._runSpeed;
+      } else if (this._stateMachine._currentState.Name === 'jump') {
+        velocity.z = this._jumpSpeed;
       } else {
         velocity.z = this._autoMoveSpeed;
-    }
+      }
 
       // Use different turn speeds for desktop and mobile
       const turnSpeed = this._input._isMobile ? this._mobileTurnSpeed : this._desktopTurnSpeed;
 
-    if (this._input._keys.left) {
-      _A.set(0, 1, 0);
+      if (this._input._keys.left) {
+        _A.set(0, 1, 0);
         _Q.setFromAxisAngle(_A, turnSpeed * Math.PI * timeInSeconds * this._acceleration.y);
-      _R.multiply(_Q);
-    }
-    if (this._input._keys.right) {
-      _A.set(0, 1, 0);
+        _R.multiply(_Q);
+      }
+      if (this._input._keys.right) {
+        _A.set(0, 1, 0);
         _Q.setFromAxisAngle(_A, turnSpeed * -Math.PI * timeInSeconds * this._acceleration.y);
-      _R.multiply(_Q);
+        _R.multiply(_Q);
       }
     }
 
@@ -299,6 +369,8 @@ class BasicCharacterControllerInput {
     this._isSwiping = false;
     this._swipeThreshold = 30; // Minimum distance for a swipe
     this._tapThreshold = 300; // Maximum time for a tap (in milliseconds)
+    this._jumpInputLocked = false;
+    this._jumpInputLockDuration = 1500; // 2 seconds in ms
     
     // Initialize neutral zone with actual dimensions
     const neutralTouch = document.getElementById('neutralTouch');
@@ -328,6 +400,14 @@ class BasicCharacterControllerInput {
   }
 
   _onKeyDown(event) {
+    if (event.keyCode === 32) { // space
+      if (!this._jumpInputLocked) {
+        this._keys.space = true;
+        this._isJumpRequested = true;
+        this._jumpInputLocked = true;
+        setTimeout(() => { this._jumpInputLocked = false; }, this._jumpInputLockDuration);
+      }
+    }
     switch (event.keyCode) {
       case 87: // w
         this._keys.forward = true;
@@ -340,10 +420,6 @@ class BasicCharacterControllerInput {
         break;
       case 68: // d
         this._keys.right = true;
-        break;
-      case 32: // space
-        this._keys.space = true;
-        this._isJumpRequested = true;
         break;
     }
   }
@@ -377,38 +453,45 @@ class BasicCharacterControllerInput {
 
     // Check which side of the screen was touched
     const touchX = event.touches[0].clientX;
+    const touchY = event.touches[0].clientY;
     const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
     
+    // Left/right movement zones
     if (touchX < screenWidth * 0.3) {
       this._keys.left = true;
       this._keys.right = false;
     } else if (touchX > screenWidth * 0.7) {
       this._keys.left = false;
       this._keys.right = true;
+    } else {
+      // Center zone actions based on vertical position
+      if (touchY < screenHeight * 0.4) {
+        // Top 40% - Jump (same as space)
+        if (!this._jumpInputLocked) {
+          this._keys.space = true;
+          this._isJumpRequested = true;
+          this._jumpInputLocked = true;
+          setTimeout(() => { this._jumpInputLocked = false; }, this._jumpInputLockDuration);
+        }
+      } else if (touchY < screenHeight * 0.8) {
+        // Middle 40% - Sprint
+        this._keys.forward = true;
+      } else {
+        // Bottom 20% - Dance (same as backward)
+        this._keys.backward = true;
+      }
     }
   }
 
   _onTouchEnd(event) {
     this._isMobile = true;
-    this._touchEndX = event.changedTouches[0].clientX;
-    this._touchEndY = event.changedTouches[0].clientY;
-    
-    const touchDuration = Date.now() - this._touchStartTime;
-    const touchDistance = Math.sqrt(
-      Math.pow(this._touchEndX - this._touchStartX, 2) +
-      Math.pow(this._touchEndY - this._touchStartY, 2)
-    );
-
-    // If it's a short touch with little movement, treat it as a tap
-    if (!this._isSwiping && touchDuration < this._tapThreshold && touchDistance < this._swipeThreshold) {
-      if (this._isInNeutralZone(this._touchEndX, this._touchEndY)) {
-        this._isJumpRequested = true;
-      }
-    }
     
     // Reset movement keys
     this._keys.left = false;
     this._keys.right = false;
+    this._keys.space = false;
+    this._keys.backward = false;
   }
 
   _onTouchMove(event) {
@@ -538,21 +621,30 @@ class DanceState extends State {
     const mixer = curAction.getMixer();
     mixer.addEventListener('finished', this._FinishedCallback);
 
+    // Slow down the master time scale
+    mixer.timeScale = 0.5;
+
     if (prevState) {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
 
       curAction.reset();  
       curAction.setLoop(THREE.LoopOnce, 1);
       curAction.clampWhenFinished = true;
+      curAction.timeScale = 0.2; // Slow down the dance animation
       curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
     } else {
+      curAction.timeScale = 0.2; // Slow down the dance animation
       curAction.play();
     }
   }
 
   _Finished() {
     this._Cleanup();
+    
+    // Reset master time scale
+    const curAction = this._parent._proxy._animations['dance'].action;
+    curAction.getMixer().timeScale = 1.0;
     
     // If previous state was jump or dance, go to idle instead
     if (this._prevState && (this._prevState.Name === 'jump' || this._prevState.Name === 'dance')) {
@@ -600,6 +692,8 @@ class DanceState extends State {
 class WalkState extends State {
   constructor(parent) {
     super(parent);
+    this._walkCooldown = 0;
+    this._walkCooldownDuration = 0.3;
   }
 
   get Name() {
@@ -623,8 +717,12 @@ class WalkState extends State {
       
       curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
+
+      // Start walk cooldown if coming from jump
+      if (prevState.Name === 'jump') {
+        this._walkCooldown = this._walkCooldownDuration;
+      }
     } else {
-  
       curAction.play();
     }
   }
@@ -633,6 +731,11 @@ class WalkState extends State {
   }
   
   Update(timeElapsed, input) {
+    // Update walk cooldown
+    if (this._walkCooldown > 0) {
+      this._walkCooldown -= timeElapsed;
+    }
+
     if (input._keys.forward) {
       this._parent.SetState('run');
       return;
@@ -642,12 +745,21 @@ class WalkState extends State {
       return;
     }
   }
+
+  get CanJump() {
+    return this._walkCooldown <= 0;
+  }
 };
 
 
 class RunState extends State {
   constructor(parent) {
     super(parent);
+    this._sprintTimer = 0;
+    this._sprintDuration = 5.0;
+    this._sprintCooldown = 0;
+    this._sprintCooldownTime = 1.5;
+    this._isSprinting = false;
   }
 
   get Name() {
@@ -681,10 +793,41 @@ class RunState extends State {
   }
 
   Update(timeElapsed, input) {
-    if (!input._keys.forward) {
-      this._parent.SetState('walk');
-      return;
+    if (input._isMobile) {
+      // Handle sprint timing for mobile
+      if (input._keys.forward && !this._isSprinting && this._sprintCooldown <= 0) {
+        // Start sprint
+        this._isSprinting = true;
+        this._sprintTimer = this._sprintDuration;
+      }
+
+      if (this._isSprinting) {
+        this._sprintTimer -= timeElapsed;
+        if (this._sprintTimer <= 0) {
+          // End sprint and start cooldown
+          this._isSprinting = false;
+          this._sprintCooldown = this._sprintCooldownTime;
+          input._keys.forward = false; // Reset forward key
+          this._parent.SetState('walk');
+          return;
+        }
+      } else if (this._sprintCooldown > 0) {
+        this._sprintCooldown -= timeElapsed;
+      }
+
+      // If not sprinting and no forward key, go to walk
+      if (!this._isSprinting && !input._keys.forward) {
+        this._parent.SetState('walk');
+        return;
+      }
+    } else {
+      // Desktop behavior
+      if (!input._keys.forward) {
+        this._parent.SetState('walk');
+        return;
+      }
     }
+
     if (input._keys.backward) {
       this._parent.SetState('dance');
       return;
@@ -740,11 +883,11 @@ class FallState extends State {
   }
 
   Enter(prevState) {
-    const curAction = this._parent._proxy._animations['fall'].action; // Using dance as placeholder
+    const curAction = this._parent._proxy._animations['fall'].action;
     if (prevState) {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
       curAction.enabled = true;
-      curAction.setLoop(THREE.LoopRepeat, 10); // Play once and stop
+      curAction.setLoop(THREE.LoopRepeat, 10);
       curAction.clampWhenFinished = true;
       curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
@@ -754,9 +897,20 @@ class FallState extends State {
       curAction.crossFadeFrom(prevAction, 0.5, true);
       curAction.play();
     }
+
+    // Show BLTNM button
+    const bltnmButton = document.getElementById('bltnmButton');
+    if (bltnmButton) {
+      bltnmButton.style.display = 'block';
+    }
   }
 
   Exit() {
+    // Hide BLTNM button
+    const bltnmButton = document.getElementById('bltnmButton');
+    if (bltnmButton) {
+      bltnmButton.style.display = 'none';
+    }
   }
 
   Update(_, input) {
@@ -772,6 +926,9 @@ class JumpState extends State {
   constructor(parent) {
     super(parent);
     this._isJumping = false;
+    this._gravityDisabled = false;
+    this._gravityDisableTimer = 0;
+    this._gravityDisableDuration = 0.43;
     this._FinishedCallback = () => {
       this._Finished();
     }
@@ -784,6 +941,8 @@ class JumpState extends State {
   Enter(prevState) {
     this._prevState = prevState;  // Store the previous state
     this._isJumping = true;
+    this._gravityDisabled = true;
+    this._gravityDisableTimer = this._gravityDisableDuration;
     const curAction = this._parent._proxy._animations['jump'].action;
     const mixer = curAction.getMixer();
     mixer.addEventListener('finished', this._FinishedCallback);
@@ -804,34 +963,19 @@ class JumpState extends State {
   _Finished() {
     this._Cleanup();
     this._isJumping = false;
+    this._gravityDisabled = false;
     
-    // If previous state was jump or dance, go to idle instead
-    if (this._prevState && (this._prevState.Name === 'jump' || this._prevState.Name === 'dance')) {
-      const idleAction = this._parent._proxy._animations['idle'].action;
-      const curAction = this._parent._proxy._animations['jump'].action;
-      
-      idleAction.reset();
-      idleAction.setEffectiveTimeScale(1.0);
-      idleAction.setEffectiveWeight(1.0);
-      idleAction.crossFadeFrom(curAction, 0.2, true);
-      idleAction.play();
-      
-      this._parent.SetState('idle');
-    } else if (this._prevState) {
-      // Normal transition back to previous state
-      const prevAction = this._parent._proxy._animations[this._prevState.Name].action;
-      const curAction = this._parent._proxy._animations['jump'].action;
-      
-      prevAction.reset();
-      prevAction.setEffectiveTimeScale(1.0);
-      prevAction.setEffectiveWeight(1.0);
-      prevAction.crossFadeFrom(curAction, 0.2, true);
-      prevAction.play();
-      
-      this._parent.SetState(this._prevState.Name);
-    } else {
-      this._parent.SetState('idle');
-    }
+    // Always transition to walk state after jump
+    const walkAction = this._parent._proxy._animations['walk'].action;
+    const curAction = this._parent._proxy._animations['jump'].action;
+    
+    walkAction.reset();
+    walkAction.setEffectiveTimeScale(1.0);
+    walkAction.setEffectiveWeight(1.0);
+    walkAction.crossFadeFrom(curAction, 0.2, true);
+    walkAction.play();
+    
+    this._parent.SetState('walk');
   }
 
   _Cleanup() {
@@ -841,24 +985,43 @@ class JumpState extends State {
 
   Exit() {
     this._Cleanup();
+    this._gravityDisabled = false;
   }
 
-  Update(_) {
+  Update(timeElapsed) {
+    if (this._gravityDisabled) {
+      this._gravityDisableTimer -= timeElapsed;
+      if (this._gravityDisableTimer <= 0) {
+        this._gravityDisabled = false;
+      }
+    }
   }
-};
+}
 
 
 class ThirdPersonCamera {
   constructor(params) {
     this._params = params;
     this._camera = params.camera;
-
     this._currentPosition = new THREE.Vector3();
     this._currentLookat = new THREE.Vector3();
+    this._danceRotation = 0;
+    this._danceState = 'none'; // none, holding
   }
 
   _CalculateIdealOffset() {
     const idealOffset = new THREE.Vector3(-15, 16, -30);
+    
+    // If in dance state, rotate the camera around the character
+    if (this._params.target._stateMachine && 
+        this._params.target._stateMachine._currentState && 
+        this._params.target._stateMachine._currentState.Name === 'dance') {
+      // Create a rotation matrix for the dance
+      const rotationMatrix = new THREE.Matrix4();
+      rotationMatrix.makeRotationY(Math.PI); // Instantly rotate 180 degrees
+      idealOffset.applyMatrix4(rotationMatrix);
+    }
+    
     idealOffset.applyQuaternion(this._params.target.Rotation);
     idealOffset.add(this._params.target.Position);
     return idealOffset;
@@ -866,24 +1029,38 @@ class ThirdPersonCamera {
 
   _CalculateIdealLookat() {
     const idealLookat = new THREE.Vector3(160, 10, 620);
+    
+    // If in dance state, rotate the lookat point around the character
+    if (this._params.target._stateMachine && 
+        this._params.target._stateMachine._currentState && 
+        this._params.target._stateMachine._currentState.Name === 'dance') {
+      // Create a rotation matrix for the dance
+      const rotationMatrix = new THREE.Matrix4();
+      rotationMatrix.makeRotationY(Math.PI); // Instantly rotate 180 degrees
+      idealLookat.applyMatrix4(rotationMatrix);
+    }
+    
     idealLookat.applyQuaternion(this._params.target.Rotation);
     idealLookat.add(this._params.target.Position);
     return idealLookat;
   }
 
   Update(timeElapsed) {
+    // Update dance state
+    if (this._params.target._stateMachine && 
+        this._params.target._stateMachine._currentState && 
+        this._params.target._stateMachine._currentState.Name === 'dance') {
+      this._danceState = 'holding';
+    } else {
+      this._danceState = 'none';
+    }
+
     const idealOffset = this._CalculateIdealOffset();
     const idealLookat = this._CalculateIdealLookat();
 
-    // const t = 0.05;
-    // const t = 4.0 * timeElapsed;
-    const t = 1.0 - Math.pow(0.001, timeElapsed);
-
-    this._currentPosition.lerp(idealOffset, t);
-    this._currentLookat.lerp(idealLookat, t);
-
-    this._camera.position.copy(this._currentPosition);
-    this._camera.lookAt(this._currentLookat);
+    // Instantly set position and lookat without lerping
+    this._camera.position.copy(idealOffset);
+    this._camera.lookAt(idealLookat);
   }
 }
 
@@ -905,6 +1082,192 @@ class ThirdPersonCameraDemo {
 
     document.body.appendChild(this._threejs.domElement);
 
+    // Create control overlay
+    const controlOverlay = document.createElement('div');
+    controlOverlay.id = 'controlOverlay';
+    controlOverlay.style.position = 'fixed';
+    controlOverlay.style.top = '0';
+    controlOverlay.style.left = '0';
+    controlOverlay.style.width = '100%';
+    controlOverlay.style.height = '100%';
+    controlOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    controlOverlay.style.display = 'flex';
+    controlOverlay.style.flexDirection = 'column';
+    controlOverlay.style.alignItems = 'center';
+    controlOverlay.style.justifyContent = 'center';
+    controlOverlay.style.zIndex = '2000';
+    controlOverlay.style.transition = 'opacity 1.5s ease-in-out';
+    controlOverlay.style.fontFamily = 'pixel';
+    controlOverlay.style.color = 'white';
+    document.body.appendChild(controlOverlay);
+
+    // Create desktop controls
+    const desktopControls = document.createElement('div');
+    desktopControls.id = 'desktopControls';
+    desktopControls.style.display = 'none';
+    desktopControls.style.textAlign = 'center';
+    desktopControls.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+        <div style="display: flex; gap: 5px;">
+          <img src="./resources/w.png" style="width: 48px; height: 48px; transition: all 0.2s ease;">
+        </div>
+        <div style="display: flex; gap: 5px;">
+          <img src="./resources/a.png" style="width: 48px; height: 48px; transition: all 0.2s ease;">
+          <img src="./resources/s.png" style="width: 48px; height: 48px; transition: all 0.2s ease;">
+          <img src="./resources/d.png" style="width: 48px; height: 48px; transition: all 0.2s ease;">
+        </div>
+        <div style="display: flex; gap: 5px; margin-top: 10px;">
+          <img src="./resources/space.png" style="height: 48px; width: auto; transition: all 0.2s ease;">
+        </div>
+      </div>
+    `;
+    controlOverlay.appendChild(desktopControls);
+
+    // Create mobile controls
+    const mobileControls = document.createElement('div');
+    mobileControls.id = 'mobileControls';
+    mobileControls.style.display = 'none';
+    mobileControls.style.position = 'fixed';
+    mobileControls.style.top = '0';
+    mobileControls.style.left = '0';
+    mobileControls.style.width = '100%';
+    mobileControls.style.height = '100%';
+    mobileControls.style.pointerEvents = 'none';
+    mobileControls.innerHTML = `
+      <div style="position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%);">
+        <img src="./resources/jump.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 50%; left: 20%; transform: translate(-50%, -50%);">
+        <img src="./resources/left.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <img src="./resources/fwd.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 50%; left: 80%; transform: translate(-50%, -50%);">
+        <img src="./resources/right.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 80%; left: 50%; transform: translate(-50%, -50%);">
+        <img src="./resources/back.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+      </div>
+    `;
+    controlOverlay.appendChild(mobileControls);
+
+    // Add sequential button click animation
+    const animateControls = () => {
+      const controls = document.querySelectorAll('#desktopControls img, #mobileControls img');
+      let currentIndex = 0;
+
+      const animateNext = () => {
+        if (currentIndex >= controls.length) {
+          currentIndex = 0;
+        }
+
+        const control = controls[currentIndex];
+        
+        // Click animation
+        control.style.transform = 'scale(0.9)';
+        control.style.opacity = '1';
+        
+        setTimeout(() => {
+          control.style.transform = 'scale(1)';
+          control.style.opacity = '0.7';
+          
+          currentIndex++;
+          setTimeout(animateNext, 500); // Wait before animating next control
+        }, 200);
+      };
+
+      animateNext();
+    };
+
+    // Show appropriate controls based on device
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      mobileControls.style.display = 'block';
+    } else {
+      desktopControls.style.display = 'block';
+    }
+    animateControls();
+
+    // Automatically fade out after 5 seconds
+    setTimeout(() => {
+      controlOverlay.style.opacity = '0';
+      setTimeout(() => {
+        controlOverlay.style.display = 'none';
+      }, 1500); // Wait for fade animation to complete
+    }, 5000);
+
+    // Create score display
+    const scoreDisplay = document.createElement('div');
+    scoreDisplay.id = 'scoreDisplay';
+    scoreDisplay.className = 'ui-element';
+    scoreDisplay.style.position = 'fixed';
+    scoreDisplay.style.bottom = '20px';
+    scoreDisplay.style.right = '20px';
+    scoreDisplay.style.zIndex = '1000';
+    scoreDisplay.style.padding = '10px';
+    scoreDisplay.style.fontSize = '24px';
+    scoreDisplay.style.color = 'white';
+    scoreDisplay.style.fontFamily = 'pixel';
+    scoreDisplay.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+    document.body.appendChild(scoreDisplay);
+
+    // Create restart button
+    const restartButton = document.createElement('button');
+    restartButton.id = 'restartButton';
+    restartButton.innerHTML = '<img src="./resources/restart.png" style="width: 24px; height: 24px; vertical-align: middle; margin-right: 5px;"> RESTART';
+    restartButton.style.position = 'fixed';
+    restartButton.style.bottom = '80px';
+    restartButton.style.right = '20px';
+    restartButton.style.zIndex = '1000';
+    restartButton.style.padding = '10px 20px';
+    restartButton.style.fontSize = '20px';
+    restartButton.style.border = 'none';
+    restartButton.style.borderRadius = '0px';
+    restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    restartButton.style.cursor = 'pointer';
+    restartButton.style.color = 'white';
+    restartButton.style.fontFamily = 'pixel';
+    restartButton.style.display = 'none'; // Initially hidden
+    restartButton.style.transition = 'all 0.3s ease';
+    restartButton.style.boxShadow = 'none';
+    restartButton.addEventListener('mouseover', () => {
+      restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+      restartButton.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.3)';
+    });
+    restartButton.addEventListener('mouseout', () => {
+      restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+      restartButton.style.boxShadow = 'none';
+    });
+    restartButton.addEventListener('click', () => {
+      // Add click animation
+      restartButton.style.transform = 'scale(1.2)';
+      restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+      
+      // Wait for animation to complete before reloading
+      setTimeout(() => {
+        window.location.reload();
+      }, 200);
+    });
+    document.body.appendChild(restartButton);
+
+    // Create mute button
+    const muteButton = document.createElement('button');
+    muteButton.id = 'muteButton';
+    muteButton.innerHTML = '🔇'; // Always start muted
+    muteButton.style.position = 'fixed';
+    muteButton.style.top = '20px';
+    muteButton.style.right = '20px';
+    muteButton.style.zIndex = '1000';
+    muteButton.style.padding = '10px';
+    muteButton.style.fontSize = '20px';
+    muteButton.style.border = 'none';
+    muteButton.style.borderRadius = '0%';
+    muteButton.style.backgroundColor = 'rgba(255, 255, 255, 0)';
+    muteButton.style.cursor = 'pointer';
+    muteButton.style.color = 'white';
+    document.body.appendChild(muteButton);
+
     // Prevent default touch behavior on the canvas
     this._threejs.domElement.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -915,6 +1278,20 @@ class ThirdPersonCameraDemo {
     this._threejs.domElement.addEventListener('touchend', (e) => {
       e.preventDefault();
     }, { passive: false });
+
+    // Prevent default touch behavior on the touch overlay
+    const touchOverlay = document.getElementById('touchOverlay');
+    if (touchOverlay) {
+      touchOverlay.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+      }, { passive: false });
+      touchOverlay.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+      }, { passive: false });
+      touchOverlay.addEventListener('touchend', (e) => {
+        e.preventDefault();
+      }, { passive: false });
+    }
 
     window.addEventListener('resize', () => {
       this._OnWindowResize();
@@ -927,6 +1304,49 @@ class ThirdPersonCameraDemo {
     this._camera.position.set(15, 10, 25);
 
     this._scene = new THREE.Scene();
+
+    // Initialize audio after camera is created
+    const listener = new THREE.AudioListener();
+    this._camera.add(listener);
+
+    // Create background music
+    const backgroundMusic = new THREE.Audio(listener);
+    const audioLoader = new THREE.AudioLoader();
+    let audioStarted = false;
+
+    // Function to start audio
+    const startAudio = () => {
+      if (!audioStarted) {
+        audioLoader.load('./resources/loop.mp3', (buffer) => {
+          backgroundMusic.setBuffer(buffer);
+          backgroundMusic.setLoop(true);
+          backgroundMusic.setVolume(0.65);
+          backgroundMusic.play();
+          audioStarted = true;
+        });
+      }
+    };
+
+    // Start audio on first user interaction
+    const startAudioOnInteraction = () => {
+      startAudio();
+      document.removeEventListener('touchstart', startAudioOnInteraction);
+      document.removeEventListener('click', startAudioOnInteraction);
+    };
+
+    // Add event listeners for both touch and click
+    document.addEventListener('touchstart', startAudioOnInteraction);
+    document.addEventListener('click', startAudioOnInteraction);
+
+    // Add mute button functionality
+    let isMuted = true; // Always start muted
+    muteButton.addEventListener('click', () => {
+      isMuted = !isMuted;
+      muteButton.innerHTML = isMuted ? '🔇' : '🔊';
+      if (backgroundMusic.isPlaying) {
+        backgroundMusic.setVolume(isMuted ? 0 : 0.65);
+      }
+    });
 
     // Setup bloom effect
     this._composer = new EffectComposer(this._threejs);
@@ -979,6 +1399,7 @@ class ThirdPersonCameraDemo {
     startCube.position.set(0, -499, 60); // Position it below the starting point
     startCube.castShadow = true;
     startCube.receiveShadow = true;
+    startCube.userData.isSolid = true; // Mark as solid for collision detection
     this._scene.add(startCube);
 
     const loader = new THREE.CubeTextureLoader();
@@ -997,8 +1418,8 @@ class ThirdPersonCameraDemo {
     this._pathSegments = [];
     this._segmentLength = 50;
     this._segmentWidth = 10;
-    this._maxSegments = 10;
-    this._headPos = new THREE.Vector3(0, 0, 0); // Start at origin
+    this._maxSegments = 20;
+    this._headPos = new THREE.Vector3(0, 0, 60); // Start at front of cube
     this._direction = 'z'; // 'z' = forward, 'x+' = right, 'x-' = left
     this._shimmerTime = 0;
     this._randomOffset = Math.random() * Math.PI * 2;
@@ -1009,6 +1430,13 @@ class ThirdPersonCameraDemo {
 
     this._mixers = [];
     this._previousRAF = null;
+
+    // Add elapsed time tracking
+    this._startTime = Date.now();
+    this._elapsedTime = 0;
+    this._isFalling = false;
+    this._timeStarted = false;
+    this._timeStartDelay = 6060; // 7 seconds in milliseconds
 
     this._LoadAnimatedModel();
     this._RAF();
@@ -1109,10 +1537,14 @@ class ThirdPersonCameraDemo {
           newPos.z += this._segmentLength / 2;
         }
       }
-      this._direction = newDir;
-      this._headPos = newPos;
-      this._CreatePathSegment(newPos);
-      this._pathCount++;
+
+      // Ensure we don't create path segments behind the cube
+      if (newPos.z >= 0) {
+        this._direction = newDir;
+        this._headPos = newPos;
+        this._CreatePathSegment(newPos);
+        this._pathCount++;
+      }
     }
 
     // Remove old segments that are too far behind
@@ -1171,9 +1603,49 @@ class ThirdPersonCameraDemo {
       this._mixers.map(m => m.update(timeElapsedS));
     }
 
+    // Update elapsed time only if not falling and time has started
+    if (!this._isFalling) {
+      const currentTime = Date.now();
+      if (!this._timeStarted && currentTime - this._startTime >= this._timeStartDelay) {
+        this._timeStarted = true;
+        this._startTime = currentTime; // Reset start time when we begin counting
+      }
+      if (this._timeStarted) {
+        this._elapsedTime = (currentTime - this._startTime) / 100; // Convert to tenths of seconds
+      }
+    }
+
     if (this._controls) {
       this._controls.Update(timeElapsedS);
       this._UpdatePath();
+      
+      // Check if character is in fall state
+      if (this._controls._stateMachine && 
+          this._controls._stateMachine._currentState && 
+          this._controls._stateMachine._currentState.Name === 'fall') {
+        this._isFalling = true;
+      }
+      
+      // Update score display with current path count plus elapsed time
+      const scoreDisplay = document.getElementById('scoreDisplay');
+      const restartButton = document.getElementById('restartButton');
+      if (scoreDisplay) {
+        if (this._pathCount > 6 && !this._isFalling) {
+          const baseCount = (this._pathCount - 6) * 100;
+          const timeCount = this._timeStarted ? Math.floor(this._elapsedTime) : 0;
+          scoreDisplay.textContent = `${baseCount + timeCount}`;
+          restartButton.style.display = 'none';
+        } else if (this._isFalling) {
+          // Keep showing the last score when falling
+          const baseCount = (this._pathCount - 6) * 100;
+          const timeCount = this._timeStarted ? Math.floor(this._elapsedTime) : 0;
+          scoreDisplay.textContent = `${baseCount + timeCount}`;
+          restartButton.style.display = 'block';
+        } else {
+          scoreDisplay.textContent = '';
+          restartButton.style.display = 'none';
+        }
+      }
     }
 
     // Update bloom shimmer with more subtle and random variations

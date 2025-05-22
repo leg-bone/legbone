@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>BLTNM RUN BETA</title>
+  <title>Three.JS Tutorial: Character Controller</title>
   <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
   <link rel="stylesheet" type="text/css" href="base.css">
   <style>
     @font-face {
       font-family: 'pixel';
-      src: url('./resourcessmallest_pixel-7.tff');
+      src: url('./resources/smallest_pixel-7.ttf');
       format: 'truetype';
     }
     
@@ -16,6 +16,7 @@
       margin: 0;
       overflow: hidden;
       touch-action: none;
+      background: black;
     }
 
     #touchOverlay {
@@ -55,6 +56,29 @@
     .ui-element {
       z-index: 1001;
     }
+
+    #bltnmButton {
+      position: fixed;
+      top: 25%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1002;
+      display: none;
+      cursor: pointer;
+      border: none;
+      background: none;
+      padding: 0;
+    }
+
+    #bltnmButton img {
+      width: 300px;
+      height: auto;
+    }
+
+    #bltnmButton:hover img {
+      transform: scale(1.1);
+      transition: transform 0.2s ease;
+    }
   </style>
 </head>
 <body>
@@ -63,6 +87,10 @@
     <div id="neutralTouch"></div>
     <div id="rightTouch"></div>
   </div>
+
+  <button id="bltnmButton" onclick="window.open('https://store.bltnm.com/', '_blank')">
+    <img src="./resources/bltnm.gif" alt="BLTNM">
+  </button>
 
   <script src="./main.js" type="module"></script>
 </body>
