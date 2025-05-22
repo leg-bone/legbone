@@ -37,7 +37,7 @@ class BasicCharacterController {
     this._isGrounded = false;
     this._raycaster = new THREE.Raycaster();
     this._raycaster.far = 10;
-    this._fallThreshold = 1.0;
+    this._fallThreshold = 0.2;
     this._planeY = 0;
     this._desktopTurnSpeed = 0.5;
     this._mobileTurnSpeed = 0.5;
@@ -59,7 +59,7 @@ class BasicCharacterController {
     this._slowdownDuration = 3.0;
     this._isSlowedDown = false;
     this._autoDanceTimer = 0;
-    this._autoDanceDelay = 3.2;
+    this._autoDanceDelay = 3.7;
     this._slowChargeTimer = 0;
     this._slowChargeDuration = 7.0;
     this._slowChargeAmount = 1.0;
@@ -1311,6 +1311,9 @@ class ThirdPersonCameraDemo {
         text.style.animation = 'pulseText 2s infinite';
       }
     }
+
+    // In _ResetGame:
+    this._spriteGameStartTime = Date.now(); // Reset sprite visibility timer
   }
 
   _Initialize() {
@@ -1460,11 +1463,11 @@ class ThirdPersonCameraDemo {
     restartButton.id = 'restartButton';
     restartButton.innerHTML = '<img src="./resources/restart.png" style="width: 24px; height: 24px; vertical-align: middle; margin-right: 5px;"> RESTART';
     restartButton.style.position = 'fixed';
-    restartButton.style.bottom = '80px';
+    restartButton.style.bottom = '120px'; // Position above score display
     restartButton.style.right = '20px';
     restartButton.style.zIndex = '1000';
-    restartButton.style.padding = '10px 20px';
-    restartButton.style.fontSize = '20px';
+    restartButton.style.padding = '10px';
+    restartButton.style.fontSize = '24px';
     restartButton.style.border = 'none';
     restartButton.style.borderRadius = '0px';
     restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
@@ -1474,6 +1477,9 @@ class ThirdPersonCameraDemo {
     restartButton.style.display = 'none';
     restartButton.style.transition = 'all 0.3s ease';
     restartButton.style.boxShadow = 'none';
+    restartButton.style.width = 'auto'; // Match score display width
+    restartButton.style.height = 'auto'; // Match score display height
+    restartButton.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)'; // Match score display shadow
     restartButton.addEventListener('mouseover', () => {
       restartButton.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
       restartButton.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.3)';
@@ -1709,24 +1715,75 @@ class ThirdPersonCameraDemo {
     this._timeStarted = false;
     this._timeStartDelay = 1400; // 7 seconds in milliseconds
 
+    // --- Sprite Sheet Setup ---
+    const columns = 10;
+    const rows = 5;
+    const totalFrames = 21;
+    const frameDuration = 0.1; // 10 FPS
+
+    const spriteTexture = new THREE.TextureLoader().load('./resources/sprite.png', (texture) => {
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+    });
+    spriteTexture.repeat.set(1 / columns, 1 / rows);
+
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: spriteTexture,
+      transparent: true,
+      depthTest: true,  // Enable depth testing
+      depthWrite: true  // Enable depth writing
+    });
+    this._followerSprite = new THREE.Sprite(spriteMaterial);
+    this._followerSprite.scale.set(35, 60, 1);
+    this._followerSprite.position.set(0, 0, 0); // Move to the right (increase x)
+    this._scene.add(this._followerSprite);
+
+    // Add position history tracking
+    this._positionHistory = [];
+    this._historyDelay = 5.0; // 5 second delay
+    this._historyInterval = 0.1; // Record position every 0.1 seconds
+    this._lastHistoryUpdate = 0;
+    this._spriteAnimTime = 0; // Dedicated variable for sprite animation
+
     this._LoadAnimatedModel();
     this._RAF();
+
+    // At the top of your _Initialize or constructor, add:
+    this._spriteGameStartTime = Date.now();
+
+    // Add this to your _Initialize method where other styles are defined:
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes scoreGlow {
+        0% {
+          text-shadow: 0 0 10px rgba(255, 255, 255, 0.5),
+                       0 0 20px rgba(255, 255, 255, 0.3),
+                       0 0 30px rgba(255, 255, 255, 0.2);
+        }
+        100% {
+          text-shadow: 0 0 20px rgba(255, 255, 255, 0.8),
+                       0 0 40px rgba(255, 255, 255, 0.6),
+                       0 0 60px rgba(255, 255, 255, 0.4);
+        }
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   _CreatePathSegment(position) {
     // Visible mesh
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(this._segmentWidth, this._segmentLength, 10, 10),
-        new THREE.MeshStandardMaterial({
+      new THREE.MeshStandardMaterial({
         color: 0x6B46C1,
         emissive: 0x6B46C1,
         emissiveIntensity: 50.0,
         metalness: 1.0,
         roughness: 0.0,
         transparent: false,
-        toneMapped: false,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.0
+        toneMapped: false
       })
     );
     plane.castShadow = false;
@@ -1886,6 +1943,43 @@ class ThirdPersonCameraDemo {
       }
     }
 
+    // Update sprite animation
+    if (this._followerSprite && this._followerSprite.material.uniforms) {
+      this._spriteAnimTime += timeElapsedS;
+      const currentFrame = Math.floor(this._spriteAnimTime / frameDuration) % totalFrames;
+      const col = currentFrame % columns;
+      const row = Math.floor(currentFrame / columns);
+      spriteTexture.offset.x = col / columns;
+      spriteTexture.offset.y = 1 - (row + 1) / rows; // Y is flipped in UV space
+    }
+
+    // Update position history
+    if (this._controls) {
+      this._lastHistoryUpdate += timeElapsedS;
+      if (this._lastHistoryUpdate >= this._historyInterval) {
+        this._positionHistory.push({
+          position: this._controls.Position.clone(),
+          time: Date.now()
+        });
+        this._lastHistoryUpdate = 0;
+
+        // Remove old positions
+        const currentTime = Date.now();
+        while (this._positionHistory.length > 0 && 
+               currentTime - this._positionHistory[0].time > this._historyDelay * 1000) {
+          this._positionHistory.shift();
+        }
+      }
+
+      // Update follower sprite position
+      if (this._positionHistory.length > 0) {
+        const delayedPosition = this._positionHistory[0].position;
+        this._followerSprite.position.x = delayedPosition.x - 5; // Shift right by 50 units
+        this._followerSprite.position.z = delayedPosition.z -10;
+        this._followerSprite.position.y = 20; // Keep at ground level
+      }
+    }
+
     if (this._controls) {
       this._controls.Update(timeElapsedS);
       this._UpdatePath();
@@ -1895,6 +1989,17 @@ class ThirdPersonCameraDemo {
           this._controls._stateMachine._currentState && 
           this._controls._stateMachine._currentState.Name === 'fall') {
         this._isFalling = true;
+        // Hide slow-mo meter
+        const slowChargeContainer = document.getElementById('slowChargeContainer');
+        if (slowChargeContainer) {
+          slowChargeContainer.style.display = 'none';
+        }
+      } else {
+        // Show slow-mo meter when not falling
+        const slowChargeContainer = document.getElementById('slowChargeContainer');
+        if (slowChargeContainer) {
+          slowChargeContainer.style.display = 'flex';
+        }
       }
       
       // Update score display with current path count plus elapsed time
@@ -1905,15 +2010,24 @@ class ThirdPersonCameraDemo {
           const baseCount = (this._pathCount - 6) * 100;
           const timeCount = this._timeStarted ? Math.floor(this._elapsedTime) : 0;
           scoreDisplay.textContent = `${baseCount + timeCount}`;
+          scoreDisplay.style.fontSize = '24px';
+          scoreDisplay.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+          scoreDisplay.style.animation = 'none';
           restartButton.style.display = 'none';
         } else if (this._isFalling) {
           // Keep showing the last score when falling
           const baseCount = (this._pathCount - 6) * 100;
           const timeCount = this._timeStarted ? Math.floor(this._elapsedTime) : 0;
           scoreDisplay.textContent = `${baseCount + timeCount}`;
+          scoreDisplay.style.fontSize = '96px'; // 4x larger
+          scoreDisplay.style.textShadow = '0 0 20px rgba(255, 255, 255, 0.8)';
+          scoreDisplay.style.animation = 'scoreGlow 0.5s infinite alternate';
           restartButton.style.display = 'block';
         } else {
           scoreDisplay.textContent = '';
+          scoreDisplay.style.fontSize = '24px';
+          scoreDisplay.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+          scoreDisplay.style.animation = 'none';
           restartButton.style.display = 'none';
         }
       }
@@ -1926,6 +2040,27 @@ class ThirdPersonCameraDemo {
     this._bloomPass.radius = 0.3 + Math.sin(this._shimmerTime * 0.3 + randomFactor) * 0.02;
 
     this._thirdPersonCamera.Update(timeElapsedS);
+
+    // --- In your _Step or animation loop, add: ---
+    this._spriteAnimTime += timeElapsedS;
+    const frameDuration = 1 / 20; // 17 FPS
+    const totalFrames = 21;
+    const columns = 10;
+    const rows = 5;
+    const currentFrame = Math.floor(this._spriteAnimTime / frameDuration) % totalFrames;
+    const col = currentFrame % columns;
+    const row = Math.floor(currentFrame / columns);
+    if (this._followerSprite && this._followerSprite.material && this._followerSprite.material.map) {
+      this._followerSprite.material.map.offset.x = col / columns;
+      this._followerSprite.material.map.offset.y = 1 - (row + 1) / rows;
+    }
+
+    // In your _Step or animation loop, before rendering the sprite:
+    if (Date.now() - this._spriteGameStartTime < 6060) {
+      this._followerSprite.visible = false;
+    } else {
+      this._followerSprite.visible = true;
+    }
   }
 }
 
