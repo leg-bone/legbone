@@ -148,8 +148,8 @@ class BasicCharacterController {
 
   _LoadModels() {
     const loader = new FBXLoader();
-    loader.setPath('./resources/zombie/');
-    loader.load('mremireh_o_desbiens.fbx', (fbx) => {
+    loader.setPath('./resources/shab/');
+    loader.load('shabjdeed.fbx', (fbx) => {
       fbx.scale.setScalar(0.1);
       fbx.traverse(c => {
         c.castShadow = true;
@@ -177,11 +177,11 @@ class BasicCharacterController {
       };
 
       const loader = new FBXLoader(this._manager);
-      loader.setPath('./resources/zombie/');
+      loader.setPath('./resources/shab/');
       loader.load('walk.fbx', (a) => { _OnLoad('walk', a); });
       loader.load('run.fbx', (a) => { _OnLoad('run', a); });
       loader.load('idle.fbx', (a) => { _OnLoad('idle', a); });
-      loader.load('dance.fbx', (a) => { _OnLoad('dance', a); });
+      loader.load('lookback.fbx', (a) => { _OnLoad('dance', a); });
       loader.load('fall.fbx', (a) => { _OnLoad('fall', a); });
       loader.load('jump.fbx', (a) => { _OnLoad('jump', a); });
     });
@@ -514,12 +514,12 @@ class BasicCharacterControllerInput {
     this._touchStartTime = 0;
     this._isSwiping = false;
     this._swipeThreshold = 30;
-    this._tapThreshold = 300;
+    this._tapThreshold = 30;
     this._jumpInputLocked = false;
     this._jumpInputLockDuration = 1500;
     this._activeTouches = new Map();
     this._gameStartTime = Date.now();
-    this._jumpDelay = 10.0; // 10 seconds before user jumps are allowed
+    this._jumpDelay = 12.5; // 10 seconds before user jumps are allowed
     
     // Initialize neutral zone with actual dimensions
     const neutralTouch = document.getElementById('neutralTouch');
@@ -1062,6 +1062,17 @@ class FallState extends State {
   }
 
   Enter(prevState) {
+    // Check if we're within first 5 seconds
+    const currentTime = (Date.now() - this._parent._proxy._gameStartTime) / 1000;
+    if (currentTime < 5.0) {
+      // Find the ThirdPersonCameraDemo instance and call _ResetGame
+      const demo = document.querySelector('canvas').__demo;
+      if (demo) {
+        demo._ResetGame();
+        return;
+      }
+    }
+
     const curAction = this._parent._proxy._animations['fall'].action;
     if (prevState) {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
@@ -1272,6 +1283,14 @@ class ThirdPersonCameraDemo {
       this._controls._isSlowedDown = false;
       this._controls._slowdownTimer = 0;
       this._controls._stateMachine.SetState('walk');
+      
+      // Reset jump input lock and game start time
+      this._controls._input._jumpInputLocked = true;
+      this._controls._input._gameStartTime = Date.now();
+      // Set timeout to unlock jump input after delay
+      setTimeout(() => { 
+        this._controls._input._jumpInputLocked = false; 
+      }, this._controls._input._jumpDelay * 1000);
     }
 
     // Reset path
@@ -1327,6 +1346,8 @@ class ThirdPersonCameraDemo {
     this._threejs.setSize(window.innerWidth, window.innerHeight);
 
     document.body.appendChild(this._threejs.domElement);
+    // Store reference to demo instance
+    this._threejs.domElement.__demo = this;
 
     // Create control overlay
     const controlOverlay = document.createElement('div');
