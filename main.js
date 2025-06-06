@@ -201,29 +201,36 @@ class BasicCharacterController {
   _CheckGroundCollision() {
     if (!this._target) return;
 
-    // Find the starting cube
-    const startCube = this._params.scene.children.find(child => 
-      child instanceof THREE.Mesh && 
-      child.geometry instanceof THREE.BoxGeometry && 
-      child.position.y === -499
-    );
+    // Check if we're within first 12 seconds
+    const currentTime = (Date.now() - this._gameStartTime) / 1000;
+    const isWithinFirst12Seconds = currentTime < 12.0;
 
-    // Check if we're in the first 5 seconds
-    const currentTime = (Date.now() - this._gameStartTime) / 1000; // Convert to seconds
-    if (startCube && currentTime < this._minHeightDuration) {
-      const cubeTop = startCube.position.y + (startCube.geometry.parameters.height / 2);
+    // During first 12 seconds, use pre-baked collision with the cube
+    if (isWithinFirst12Seconds) {
+      // The cube is always at z=60, and its top surface is at y=-499 + (height/2)
+      const cubeTop = -499 + (1000/2); // Cube height is 1000
       const minAllowedHeight = cubeTop + this._minHeightAboveCube;
-      
+
       // If character is below minimum height, push them up
       if (this._target.position.y < minAllowedHeight) {
         this._target.position.y = minAllowedHeight;
         this._velocity.y = 0;
         this._isGrounded = true;
+        
+        // Ensure automatic forward movement during first 12 seconds
+        if (!this._hasSpawned) {
+          this._hasSpawned = true;
+          this._target.position.y += 0.5; // Small bounce to ensure we're above ground
+          this._velocity.y = 2.0; // Small upward velocity for the bounce
+        }
+        
+        // Set forward velocity to maintain movement
+        this._velocity.z = this._autoMoveSpeed;
         return;
       }
     }
 
-    // Cast multiple rays in a pattern around the character
+    // After 12 seconds, use normal collision detection
     const rayStart = this._target.position.clone();
     rayStart.y += 0.1; // Slightly above character's feet
     
@@ -256,7 +263,7 @@ class BasicCharacterController {
          obj.geometry instanceof THREE.PlaneGeometry ||
          obj.userData.isSolid)
       );
-      
+
       const intersects = this._raycaster.intersectObjects(collisionMeshes, true);
 
       if (intersects.length > 0) {
@@ -303,6 +310,10 @@ class BasicCharacterController {
     if (!this._stateMachine._currentState) {
       return;
     }
+
+    // Check if controls are locked
+    const currentTime = (Date.now() - this._input._gameStartTime) / 1000;
+    const controlsLocked = currentTime < this._input._controlLockDuration;
 
     // Handle auto-jump during initial fall
     if (!this._hasSpawned && !this._autoJumpTriggered && this._target && this._target.position.y < this._initialSpawnHeight) {
@@ -413,8 +424,8 @@ class BasicCharacterController {
       acc.multiplyScalar(0.0);
     }  
 
-    // Only allow movement after we've properly spawned
-    if (this._hasSpawned) {
+    // Only allow movement after we've properly spawned and controls are unlocked
+    if (this._hasSpawned && !controlsLocked) {
       // Automatic forward movement with speed control
       if (this._input._keys.backward && this._slowChargeAmount >= 1.0) {
         velocity.z = this._slowMoveSpeed;
@@ -460,6 +471,9 @@ class BasicCharacterController {
         _Q.setFromAxisAngle(_A, turnSpeed * -Math.PI * timeInSeconds * this._acceleration.y);
         _R.multiply(_Q);
       }
+    } else if (this._hasSpawned) {
+      // If controls are locked but we've spawned, just move forward at auto speed
+      velocity.z = this._autoMoveSpeed;
     }
 
     controlObject.quaternion.copy(_R);
@@ -520,6 +534,7 @@ class BasicCharacterControllerInput {
     this._activeTouches = new Map();
     this._gameStartTime = Date.now();
     this._jumpDelay = 12.5; // 10 seconds before user jumps are allowed
+    this._controlLockDuration = 12.0; // 12 seconds before all controls are unlocked
     
     // Initialize neutral zone with actual dimensions
     const neutralTouch = document.getElementById('neutralTouch');
@@ -549,47 +564,111 @@ class BasicCharacterControllerInput {
   }
 
   _onKeyDown(event) {
+    const currentTime = (Date.now() - this._gameStartTime) / 1000;
+    if (currentTime < this._controlLockDuration) {
+      return; // Ignore all input during control lock
+    }
+
     if (event.keyCode === 32) { // space
-      const currentTime = (Date.now() - this._gameStartTime) / 1000;
       if (!this._jumpInputLocked && currentTime >= this._jumpDelay) {
         this._keys.space = true;
         this._isJumpRequested = true;
         this._jumpInputLocked = true;
         setTimeout(() => { this._jumpInputLocked = false; }, this._jumpInputLockDuration);
+        // Light up space key
+        const spaceKey = document.getElementById('spaceKey');
+        if (spaceKey) {
+          spaceKey.style.opacity = '1';
+          spaceKey.style.filter = 'brightness(1.5)';
+        }
       }
     }
     switch (event.keyCode) {
       case 87: // w
         this._keys.forward = true;
+        // Light up W key
+        const wKey = document.getElementById('wKey');
+        if (wKey) {
+          wKey.style.opacity = '1';
+          wKey.style.filter = 'brightness(1.5)';
+        }
         break;
       case 83: // s
         this._keys.backward = true;
+        // Light up S key
+        const sKey = document.getElementById('sKey');
+        if (sKey) {
+          sKey.style.opacity = '1';
+          sKey.style.filter = 'brightness(1.5)';
+        }
         break;
       case 65: // a
         this._keys.left = true;
+        // Light up A key
+        const aKey = document.getElementById('aKey');
+        if (aKey) {
+          aKey.style.opacity = '1';
+          aKey.style.filter = 'brightness(1.5)';
+        }
         break;
       case 68: // d
         this._keys.right = true;
+        // Light up D key
+        const dKey = document.getElementById('dKey');
+        if (dKey) {
+          dKey.style.opacity = '1';
+          dKey.style.filter = 'brightness(1.5)';
+        }
         break;
     }
   }
 
   _onKeyUp(event) {
-    switch(event.keyCode) {
+    switch (event.keyCode) {
+      case 32: // space
+        this._keys.space = false;
+        // Reset space key
+        const spaceKey = document.getElementById('spaceKey');
+        if (spaceKey) {
+          spaceKey.style.opacity = '0.3';
+          spaceKey.style.filter = 'brightness(1)';
+        }
+        break;
       case 87: // w
         this._keys.forward = false;
+        // Reset W key
+        const wKey = document.getElementById('wKey');
+        if (wKey) {
+          wKey.style.opacity = '0.3';
+          wKey.style.filter = 'brightness(1)';
+        }
         break;
       case 83: // s
         this._keys.backward = false;
+        // Reset S key
+        const sKey = document.getElementById('sKey');
+        if (sKey) {
+          sKey.style.opacity = '0.3';
+          sKey.style.filter = 'brightness(1)';
+        }
         break;
       case 65: // a
         this._keys.left = false;
+        // Reset A key
+        const aKey = document.getElementById('aKey');
+        if (aKey) {
+          aKey.style.opacity = '0.3';
+          aKey.style.filter = 'brightness(1)';
+        }
         break;
       case 68: // d
         this._keys.right = false;
-        break;
-      case 32: // space
-        this._keys.space = false;
+        // Reset D key
+        const dKey = document.getElementById('dKey');
+        if (dKey) {
+          dKey.style.opacity = '0.3';
+          dKey.style.filter = 'brightness(1)';
+        }
         break;
     }
   }
@@ -607,6 +686,11 @@ class BasicCharacterControllerInput {
 
   _onTouchStart(event) {
     this._isMobile = true;
+    
+    const currentTime = (Date.now() - this._gameStartTime) / 1000;
+    if (currentTime < this._controlLockDuration) {
+      return; // Ignore all input during control lock
+    }
     
     // Handle each touch point
     for (let i = 0; i < event.touches.length; i++) {
@@ -687,6 +771,11 @@ class BasicCharacterControllerInput {
 
   _onTouchMove(event) {
     this._isMobile = true;
+    
+    const currentTime = (Date.now() - this._gameStartTime) / 1000;
+    if (currentTime < this._controlLockDuration) {
+      return; // Ignore all input during control lock
+    }
     
     // Update each active touch
     for (let i = 0; i < event.touches.length; i++) {
@@ -1088,18 +1177,34 @@ class FallState extends State {
       curAction.play();
     }
 
-    // Show BLTNM button
+    // Show BLTNM button and cursor
     const bltnmButton = document.getElementById('bltnmButton');
     if (bltnmButton) {
       bltnmButton.style.display = 'block';
+      // Add cursor image
+      const cursor = document.createElement('img');
+      cursor.src = './resources/cursor.gif';
+      cursor.style.position = 'fixed';
+      cursor.style.top = 'calc(25% + 8vh)';  // Position relative to BLTNM button
+      cursor.style.left = 'calc(50% + 12vw)';
+      cursor.style.transform = 'translate(-125%, -125%)';
+      cursor.style.width = 'auto';
+      cursor.style.height = '4vh';
+      cursor.style.zIndex = '1003';
+      cursor.id = 'fallCursor';
+      document.body.appendChild(cursor);
     }
   }
 
   Exit() {
-    // Hide BLTNM button
+    // Hide BLTNM button and cursor
     const bltnmButton = document.getElementById('bltnmButton');
     if (bltnmButton) {
       bltnmButton.style.display = 'none';
+    }
+    const cursor = document.getElementById('fallCursor');
+    if (cursor) {
+      document.body.removeChild(cursor);
     }
   }
 
@@ -1284,9 +1389,19 @@ class ThirdPersonCameraDemo {
       this._controls._slowdownTimer = 0;
       this._controls._stateMachine.SetState('walk');
       
-      // Reset jump input lock and game start time
+      // Reset input state
+      this._controls._input._keys = {
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        space: false,
+      };
+      this._controls._input._isJumpRequested = false;
       this._controls._input._jumpInputLocked = true;
       this._controls._input._gameStartTime = Date.now();
+      this._controls._input._activeTouches.clear();
+      
       // Set timeout to unlock jump input after delay
       setTimeout(() => { 
         this._controls._input._jumpInputLocked = false; 
@@ -1383,8 +1498,8 @@ class ThirdPersonCameraDemo {
           <img src="./resources/s.png" style="width: 48px; height: 48px; transition: all 0.2s ease;">
           <img src="./resources/d.png" style="width: 48px; height: 48px; transition: all 0.2s ease;">
         </div>
-        <div style="display: flex; gap: 5px; margin-top: 10px;">
-          <img src="./resources/space.png" style="height: 48px; width: auto; transition: all 0.2s ease;">
+        <div style="display: flex; gap: 5px; margin-top: 5px;">
+          <img src="./resources/space.png" style="height: auto; width: 159px; transition: all 0.2s ease;">
         </div>
       </div>
     `;
@@ -1402,19 +1517,19 @@ class ThirdPersonCameraDemo {
     mobileControls.style.pointerEvents = 'none';
     mobileControls.innerHTML = `
       <div style="position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%);">
-        <img src="./resources/jump.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+        <img src="./resources/jump.png" style="width: auto; height: 17vh; opacity: 0.7; transition: all 0.2s ease;">
       </div>
       <div style="position: absolute; top: 50%; left: 20%; transform: translate(-50%, -50%);">
         <img src="./resources/left.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
       </div>
       <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
-        <img src="./resources/fwd.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+        <img src="./resources/fwd.png" style="width: auto; height: 17vh; opacity: 0.7; transition: all 0.2s ease;">
       </div>
       <div style="position: absolute; top: 50%; left: 80%; transform: translate(-50%, -50%);">
         <img src="./resources/right.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
       </div>
       <div style="position: absolute; top: 80%; left: 50%; transform: translate(-50%, -50%);">
-        <img src="./resources/back.png" style="width: 30vw; height: auto; opacity: 0.7; transition: all 0.2s ease;">
+        <img src="./resources/back.png" style="width: auto; height: 17vh; opacity: 0.7; transition: all 0.2s ease;">
       </div>
     `;
     controlOverlay.appendChild(mobileControls);
@@ -1789,8 +1904,74 @@ class ThirdPersonCameraDemo {
                        0 0 60px rgba(255, 255, 255, 0.4);
         }
       }
+
+      @keyframes countdownFade {
+        0% {
+          opacity: 0;
+          transform: scale(0.5) translate(-50%, -50%);
+        }
+        20% {
+          opacity: 1;
+          transform: scale(1.2) translate(-50%, -50%);
+        }
+        80% {
+          opacity: 1;
+          transform: scale(1) translate(-50%, -50%);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(0.8) translate(-50%, -50%);
+        }
+      }
     `;
     document.head.appendChild(style);
+
+    // Create countdown element
+    const countdownElement = document.createElement('div');
+    countdownElement.id = 'countdownElement';
+    countdownElement.style.position = 'fixed';
+    countdownElement.style.top = '50%';
+    countdownElement.style.left = '50%';
+    countdownElement.style.transform = 'translate(-50%, -50%)';
+    countdownElement.style.fontSize = '120px';
+    countdownElement.style.fontFamily = 'pixel';
+    countdownElement.style.color = 'white';
+    countdownElement.style.textShadow = '0 0 20px rgba(255, 255, 255, 0.8)';
+    countdownElement.style.zIndex = '1000';
+    countdownElement.style.opacity = '0';
+    countdownElement.style.pointerEvents = 'none';
+    document.body.appendChild(countdownElement);
+
+    // Create key controls overlay
+    const keyControlsOverlay = document.createElement('div');
+    keyControlsOverlay.id = 'keyControlsOverlay';
+    keyControlsOverlay.style.position = 'fixed';
+    keyControlsOverlay.style.top = '10px';
+    keyControlsOverlay.style.left = '10px';
+    keyControlsOverlay.style.width = '100px';
+    keyControlsOverlay.style.height = '100px';
+    keyControlsOverlay.style.pointerEvents = 'none';
+    keyControlsOverlay.style.zIndex = '1000';
+    keyControlsOverlay.style.display = isMobile ? 'none' : 'block';
+    document.body.appendChild(keyControlsOverlay);
+
+    keyControlsOverlay.innerHTML = `
+      <div style="position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%);">
+        <img src="./resources/w.png" id="wKey" style="width: 30px; height: auto; opacity: 0.3; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 50%; left: 20%; transform: translate(-50%, -50%);">
+        <img src="./resources/a.png" id="aKey" style="width: 30px; height: auto; opacity: 0.3; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <img src="./resources/s.png" id="sKey" style="width: 30px; height: auto; opacity: 0.3; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 50%; left: 80%; transform: translate(-50%, -50%);">
+        <img src="./resources/d.png" id="dKey" style="width: 30px; height: auto; opacity: 0.3; transition: all 0.2s ease;">
+      </div>
+      <div style="position: absolute; top: 80%; left: 50%; transform: translate(-50%, -50%);">
+        <img src="./resources/space.png" id="spaceKey" style="width: 90px; height: auto; opacity: 0.3; transition: all 0.2s ease;">
+      </div>
+    `;
   }
 
   _CreatePathSegment(position) {
@@ -2081,6 +2262,31 @@ class ThirdPersonCameraDemo {
       this._followerSprite.visible = false;
     } else {
       this._followerSprite.visible = true;
+    }
+
+    // Update countdown animation
+    const currentTime = (Date.now() - this._startTime) / 1000;
+    const countdownElement = document.getElementById('countdownElement');
+    
+    if (countdownElement) {
+      if (currentTime >= 8.0 && currentTime < 10.5) {
+        const countdownTime = currentTime - 8.0;
+        const countdownNumber = Math.floor(4 - (countdownTime * 1.5));
+        const text = countdownNumber > 0 ? countdownNumber.toString() : 'RUN';
+        
+        countdownElement.textContent = text;
+        countdownElement.style.animation = 'countdownFade 0.5s forwards';
+        
+        // Reset animation for next number
+        if (countdownTime % 0.66 < 0.1) {
+          countdownElement.style.animation = 'none';
+          countdownElement.offsetHeight; // Force reflow
+          countdownElement.style.animation = 'countdownFade 0.5s forwards';
+        }
+      } else {
+        countdownElement.style.opacity = '0';
+        countdownElement.style.animation = 'none';
+      }
     }
   }
 }
