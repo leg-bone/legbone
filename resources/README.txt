@@ -1,4 +1,13 @@
-Most of these textures were taken from freepbr.com or https://opengameart.org/content/36-free-ground-textures-diffuse-normals.
+Author
+======
 
-They were all 2kx2k so they've been resaved as 1k.
-All models are free from https://sketchfab.com/
+This is the work of Emil Persson, aka Humus.
+http://www.humus.name
+
+
+
+License
+=======
+
+This work is licensed under a Creative Commons Attribution 3.0 Unported License.
+http://creativecommons.org/licenses/by/3.0/
