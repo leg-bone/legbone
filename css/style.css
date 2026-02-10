@@ -26,7 +26,13 @@ body{
   margin:auto;
   overflow:hidden;
 }
-
+.container{
+  align-content:center;
+  justify-content:center;
+  width:80%;
+  margin:auto;
+  overflow:hidden;
+}
 /*header*/
 header{
   background:#8a2be2;
