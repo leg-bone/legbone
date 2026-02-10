@@ -29,8 +29,9 @@ body{
 .container{
   align-content:center;
   justify-content:center;
-  width:80%;
-  margin:auto;
+  width:95vw;
+margin: 2vw;
+
   overflow:hidden;
 }
 /*header*/
@@ -131,7 +132,7 @@ img{width:420px}
 }
 
 video{
-  width:30vw;
+  width:20vw;
 
 }
 
