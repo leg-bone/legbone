@@ -29,8 +29,8 @@ body{
 .container{
   align-content:center;
   justify-content:center;
-  width:100vw;
-margin: 2vw;
+  width:99vw;
+
 
   overflow:hidden;
 }
@@ -132,7 +132,11 @@ img{width:420px}
 }
 
 video{
+
   width:30%;
+  height: auto;
+  max-height: 20vh;
+  justify-content: center;
 
 }
 
