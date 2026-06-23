@@ -6,8 +6,15 @@
     <title>legbone.net</title>
     <link rel="stylesheet" href="./css/style.css">
     <link rel="shortcut icon" type="image/png" href="ok3.png">
+      <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.1.1/model-viewer.min.js"></script>
+
   </head>
   <body>
+    <div id="intro-overlay" aria-hidden="true">
+  <video id="intro-load-video" autoplay muted playsinline preload="auto">
+    <source src="legbone flip 02.mp4" type="video/mp4">
+  </video>
+</div>
 <header>
   <div class="container">
     <div id="branding">
@@ -20,30 +27,307 @@
       </ul>
     </nav>
   </div>
+
 </header>
 
-<section id="showcase">
-  <div class="container">
-      <h1>digital archive</h1>
-    <p></p>
-  </div>
+
 </section>
   <section id="boxes">
-    <div class="container">
-      <div class ="box">
-        <a href="./video.html"><img src="./img/mov5.png"></a>
-        <a href="./video.html"><h1>video</h1></a>
+  
+      <div class ="box hover-card">
+
+
+<a href="./video.html">
+<model-viewer src="./3danimation_01.glb" ar ar-modes="webxr scene-viewer quick-look fallback"
+disable-zoom camera-controls iframe width="auto" poster="./img/mov5.png" shadow-intensity="0" shadow-softness="1" camera-controls poster="./img/poster04.png" shadow-intensity="0" shadow-softness="1"
+camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10m .05m 0m" interaction-prompt="none" autoplay animation-name="1">
+</model-viewer>
+</a>
+
       </div>
-      <div class ="box">
-        <a href="./image.html"><img src="./img/img1.png"></a>
-        <a href="./image.html"><h1>image</h1></a>
+           <div class ="box hover-card">
+        <a href="./fabrication.html">
+   
+<model-viewer src="./fabrication_02.glb" ar ar-modes="webxr scene-viewer quick-look fallback"
+disable-zoom camera-controls poster="./img/mov5.png" shadow-intensity="0" shadow-softness="1" camera-controls poster="./img/poster04.png" shadow-intensity="0" shadow-softness="1"
+camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10m .05m 0m" interaction-prompt="none" autoplay>
+</model-viewer>
+</a>
+        
       </div>
-      <div class ="box">
-        <a href="./space.html"><img src="./img/other1.png"></a>
-        <a href="./space.html"><h1>other</h1></a>
+      <div class ="box hover-card">
+        <a href="./image.html">
+        <model-viewer src="./3dmodeling_01.glb" ar ar-modes="webxr scene-viewer quick-look fallback"
+disable-zoom camera-controls poster="./img/mov5.png" shadow-intensity="0" shadow-softness="1" camera-controls poster="./img/poster04.png" shadow-intensity="0" shadow-softness="1"
+camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10m .1m 0m" interaction-prompt="none" autoplay>
+</model-viewer>
+        </a>
       </div>
-    </div>
+
+      <div class ="box hover-card">
+        <a href="./web.html">
+        <model-viewer src="./webdev.glb" ar ar-modes="webxr scene-viewer quick-look fallback"
+disable-zoom camera-controls poster="./img/mov5.png" shadow-intensity="0" shadow-softness="1" camera-controls poster="./img/poster04.png" shadow-intensity="0" shadow-softness="1"
+camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10m .1m 0m" interaction-prompt="none" autoplay>
+</model-viewer>
+        </a>
+      </div>
+            <div class ="box hover-card">
+        <a href="./space.html">
+        <model-viewer src="./other.glb" ar ar-modes="webxr scene-viewer quick-look fallback"
+disable-zoom camera-controls poster="./img/mov5.png" shadow-intensity="0" shadow-softness="1" camera-controls poster="./img/poster04.png" shadow-intensity="0" shadow-softness="1"
+camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10m .2m 0m" interaction-prompt="none" autoplay>
+</model-viewer>
+        </a>
+      </div>
+ 
   </section>
 
+  <script>
+    (function () {
+      const overlay = document.getElementById('intro-overlay');
+      const introVideo = document.getElementById('intro-load-video');
+
+      function fadeIntroAway() {
+        if (!overlay || overlay.classList.contains('fade-out')) {
+          return;
+        }
+
+        overlay.classList.add('fade-out');
+        window.setTimeout(function () {
+          overlay.remove();
+        }, 1100);
+      }
+
+      if (!introVideo) {
+        fadeIntroAway();
+        return;
+      }
+
+      introVideo.addEventListener('ended', fadeIntroAway);
+      introVideo.addEventListener('error', fadeIntroAway);
+
+      introVideo.play().catch(function () {
+        fadeIntroAway();
+      });
+    })();
+
+    (function () {
+      const viewers = document.querySelectorAll('#boxes model-viewer');
+      const hoverModelSrc1 = './3danimation_02.glb';
+      const hoverModelSrc2 = './fabrication_01.glb';
+      const hoverModelSrc3 = './3dmodeling_02.glb';
+      const hoverModelSrc4 = './webdev.glb';
+      const hoverModelSrc5 = './other.glb';
+      const hoverModelSrc6 = './fabrication_01.glb';
+      const hoverModelSrcByViewer = [
+        hoverModelSrc1,
+        hoverModelSrc2,
+        hoverModelSrc3,
+        hoverModelSrc4,
+        hoverModelSrc5,
+        hoverModelSrc6
+      ];
+      const maxThetaOffsetRad = 0.45;
+      const maxPhiOffsetRad = 0.45;
+      const crossThetaFromYRad = 0.12;
+      const crossPhiFromXRad = 0.08;
+      const hoverZoomFactor = .89;
+      const orbitLerpFactor = 0.15;
+      const emissivePulseFrequencyHz = 1.2;
+      const emissivePulseStrength = 0.35;
+
+      function toNumber(value, fallback) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      }
+
+      function getEmissiveFactor(material) {
+        if (typeof material.getEmissiveFactor === 'function') {
+          return material.getEmissiveFactor().slice();
+        }
+
+        if (Array.isArray(material.emissiveFactor)) {
+          return material.emissiveFactor.slice();
+        }
+
+        return null;
+      }
+
+      function setEmissiveFactor(material, factor) {
+        if (typeof material.setEmissiveFactor === 'function') {
+          material.setEmissiveFactor(factor);
+          return;
+        }
+
+        if (Array.isArray(material.emissiveFactor)) {
+          material.emissiveFactor = factor;
+        }
+      }
+
+      function cacheMaterialState(viewer, state) {
+        if (!viewer.model || !Array.isArray(viewer.model.materials)) {
+          return;
+        }
+
+        state.materialData = viewer.model.materials
+          .map(function (material) {
+            const emissiveFactor = getEmissiveFactor(material);
+            if (!emissiveFactor) {
+              return null;
+            }
+            return {
+              material: material,
+              emissiveFactor: emissiveFactor
+            };
+          })
+          .filter(Boolean);
+      }
+
+      viewers.forEach(function (viewer, index) {
+        const hoverModelSrc = hoverModelSrcByViewer[index] || '';
+        const state = {
+          rafId: null,
+          startMs: 0,
+          baseTheta: 0,
+          basePhi: 0,
+          baseRadius: 1,
+          currentTheta: 0,
+          currentPhi: 0,
+          currentRadius: 1,
+          targetTheta: 0,
+          targetPhi: 0,
+          targetRadius: 1,
+          originalSrc: viewer.getAttribute('src') || '',
+          materialData: []
+        };
+
+        viewer.addEventListener('load', function () {
+          cacheMaterialState(viewer, state);
+        });
+
+        function animate(nowMs) {
+          const elapsedSec = (nowMs - state.startMs) / 1000;
+
+          state.currentTheta += (state.targetTheta - state.currentTheta) * orbitLerpFactor;
+          state.currentPhi += (state.targetPhi - state.currentPhi) * orbitLerpFactor;
+          state.currentRadius += (state.targetRadius - state.currentRadius) * orbitLerpFactor;
+
+          viewer.cameraOrbit = state.currentTheta + 'rad ' + state.currentPhi + 'rad ' + state.currentRadius + 'm';
+
+          // Keep emissive factors pulsing around their original value while hovered.
+          const pulseWave = Math.sin(elapsedSec * Math.PI * 2 * emissivePulseFrequencyHz);
+          const pulse = 1 + (pulseWave * emissivePulseStrength);
+
+          state.materialData.forEach(function (entry) {
+            const nextFactor = entry.emissiveFactor.map(function (channelValue) {
+              return Math.max(0, channelValue * pulse);
+            });
+            setEmissiveFactor(entry.material, nextFactor);
+          });
+
+          state.rafId = window.requestAnimationFrame(animate);
+        }
+
+        viewer.addEventListener('mouseenter', function () {
+          if (state.rafId !== null) {
+            return;
+          }
+
+          if (state.originalSrc && state.originalSrc !== hoverModelSrc) {
+            viewer.setAttribute('src', hoverModelSrc);
+          }
+
+          if (state.materialData.length === 0) {
+            cacheMaterialState(viewer, state);
+          }
+
+          const orbit = viewer.getCameraOrbit();
+          state.baseTheta = toNumber(orbit.theta, 0);
+          state.basePhi = toNumber(orbit.phi, 0);
+          state.baseRadius = toNumber(orbit.radius, 1);
+          state.currentTheta = state.baseTheta;
+          state.currentPhi = state.basePhi;
+          state.currentRadius = state.baseRadius;
+          state.targetTheta = state.baseTheta;
+          state.targetPhi = state.basePhi;
+          state.targetRadius = state.baseRadius * hoverZoomFactor;
+          state.startMs = performance.now();
+          state.rafId = window.requestAnimationFrame(animate);
+        });
+
+        viewer.addEventListener('mousemove', function (event) {
+          if (state.rafId === null) {
+            return;
+          }
+
+          const rect = viewer.getBoundingClientRect();
+          if (!rect.width || !rect.height) {
+            return;
+          }
+
+          const xNorm = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+          const yNorm = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+
+          state.targetTheta = state.baseTheta - (xNorm * maxThetaOffsetRad) - (yNorm * crossThetaFromYRad);
+          state.targetPhi = state.basePhi - (yNorm * maxPhiOffsetRad) + (xNorm * crossPhiFromXRad);
+          state.targetRadius = state.baseRadius * hoverZoomFactor;
+        });
+
+        viewer.addEventListener('mouseleave', function () {
+          if (state.rafId !== null) {
+            window.cancelAnimationFrame(state.rafId);
+            state.rafId = null;
+          }
+
+          if (state.originalSrc && viewer.getAttribute('src') !== state.originalSrc) {
+            viewer.setAttribute('src', state.originalSrc);
+          }
+
+          viewer.cameraOrbit = state.baseTheta + 'rad ' + state.basePhi + 'rad ' + state.baseRadius + 'm';
+
+          state.materialData.forEach(function (entry) {
+            setEmissiveFactor(entry.material, entry.emissiveFactor);
+          });
+        });
+      });
+    })();
+
+    (function () {
+      const introAudio = new Audio('loop.mp3');
+      let hasStarted = false;
+
+      introAudio.preload = 'auto';
+      introAudio.playbackRate = .967;
+      introAudio.volume = 0.5;
+
+      function stopAfterFourSeconds() {
+        window.setTimeout(function () {
+          introAudio.pause();
+          introAudio.currentTime = 0;
+        }, 3000);
+      }
+
+      function startAudio() {
+        if (hasStarted) {
+          return;
+        }
+        hasStarted = true;
+
+        introAudio.play().then(function () {
+          stopAfterFourSeconds();
+        }).catch(function () {
+          hasStarted = false;
+        });
+      }
+
+      window.addEventListener('load', startAudio, { once: true });
+
+      // Fallback for browsers that block autoplay until user interaction.
+      window.addEventListener('pointerdown', startAudio, { once: true });
+      window.addEventListener('keydown', startAudio, { once: true });
+    })();
+  </script>
   </body>
+</div>
 </html>

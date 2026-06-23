@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>legbone.net - random sampler</title>
+		<link rel="stylesheet" href="./css/style.css">
+		<link rel="shortcut icon" type="image/png" href="ok3.png">
+		<style>
+			#sampler {
+				color: #c0c0c0;
+				padding: 16px 0 36px;
+			}
+
+			#sampler .panel {
+				width: min(980px, 95vw);
+				margin: 0 auto;
+			}
+
+			#sampler .controls {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 12px;
+				margin-bottom: 16px;
+			}
+
+			#sampler button,
+			#sampler input[type="number"],
+			#sampler input[type="file"] {
+				font-family: monospace;
+				background: #000000;
+				color: #c0c0c0;
+				border: 1px solid #8a2be2;
+				padding: 8px;
+			}
+
+			#sampler button:hover {
+				color: #00ff00;
+				border-color: #00ff00;
+				cursor: pointer;
+			}
+
+			#sampler .sample-list {
+				display: grid;
+				gap: 10px;
+			}
+
+			#sampler .sample-row {
+				border: 1px solid #8a2be2;
+				padding: 10px;
+				display: grid;
+				grid-template-columns: minmax(180px, 1.2fr) auto auto auto auto auto auto;
+				gap: 10px;
+				align-items: center;
+			}
+
+			#sampler .sample-name {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			#sampler .sample-row input[type="range"] {
+				width: 160px;
+			}
+
+			#sampler .beat-toggles {
+				display: inline-flex;
+				gap: 6px;
+			}
+
+			#sampler .beat-toggle {
+				min-width: 34px;
+				padding: 6px 8px;
+				border: 1px solid #8a2be2;
+				background: #000000;
+				color: #c0c0c0;
+			}
+
+			#sampler .beat-toggle.active {
+				background: #8a2be2;
+				color: #ffffff;
+			}
+
+			#sampler .muted {
+				opacity: 0.5;
+			}
+
+			#status {
+				min-height: 1em;
+			}
+
+			@media (max-width: 900px) {
+				#sampler .sample-row {
+					grid-template-columns: 1fr;
+				}
+
+				#sampler .sample-row input[type="range"] {
+					width: 100%;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<div class="container">
+				<div id="branding">
+					<h1>legbone.net</h1>
+				</div>
+				<nav>
+					<ul>
+						<li><a href="index.html">art</a></li>
+						<li><a href="communication.html">communication</a></li>
+					</ul>
+				</nav>
+			</div>
+		</header>
+
+		<section id="showcase">
+			<div class="container">
+				<h1>random sampler</h1>
+				<p>upload as many sounds as you want and let them fire randomly on beat</p>
+			</div>
+		</section>
+
+		<section id="sampler">
+			<div class="panel">
+				<div class="controls">
+					<label for="fileInput">Upload samples:</label>
+					<input id="fileInput" type="file" accept="audio/*" multiple>
+
+					<label for="bpmInput">BPM:</label>
+					<input id="bpmInput" type="number" min="20" max="300" step="1" value="120">
+
+					<button id="startBtn" type="button">Start</button>
+					<button id="stopBtn" type="button">Stop</button>
+				</div>
+
+				<p id="status">Stopped.</p>
+				<div id="sampleList" class="sample-list"></div>
+			</div>
+		</section>
+
+		<script>
+			const fileInput = document.getElementById('fileInput');
+			const bpmInput = document.getElementById('bpmInput');
+			const startBtn = document.getElementById('startBtn');
+			const stopBtn = document.getElementById('stopBtn');
+			const statusEl = document.getElementById('status');
+			const sampleListEl = document.getElementById('sampleList');
+
+			const samples = [];
+			let isRunning = false;
+			let beatTimer = null;
+			let currentBeatInBar = 1;
+
+			function setStatus(text) {
+				statusEl.textContent = text;
+			}
+
+			function getBeatDurationMs() {
+				const bpm = Math.max(20, Number(bpmInput.value) || 120);
+				return 60000 / bpm;
+			}
+
+			function playSample(sample) {
+				const player = sample.audio.cloneNode(true);
+				player.volume = sample.volume;
+				player.play().catch(function () {
+					setStatus('Audio play blocked by browser. Press Start again after interacting.');
+				});
+			}
+
+			function randomPlaysForBeat(ratePerBeat) {
+				const wholePlays = Math.floor(ratePerBeat);
+				const fractional = ratePerBeat - wholePlays;
+				const maybeOneMore = Math.random() < fractional ? 1 : 0;
+				return wholePlays + maybeOneMore;
+			}
+
+			function triggerBeat() {
+				const beatDuration = getBeatDurationMs();
+				const beatIndex = currentBeatInBar - 1;
+
+				samples.forEach(function (sample) {
+					if (!sample.enabled) {
+						return;
+					}
+
+					if (!sample.beatSteps[beatIndex]) {
+						return;
+					}
+
+					const playsThisBeat = randomPlaysForBeat(sample.ratePerBeat);
+					for (let i = 0; i < playsThisBeat; i += 1) {
+						const randomDelay = Math.random() * beatDuration;
+						window.setTimeout(function () {
+							if (isRunning && sample.enabled) {
+								playSample(sample);
+							}
+						}, randomDelay);
+					}
+				});
+
+				currentBeatInBar = (currentBeatInBar % 4) + 1;
+			}
+
+			function stopClock() {
+				if (beatTimer !== null) {
+					window.clearInterval(beatTimer);
+					beatTimer = null;
+				}
+			}
+
+			function startClock() {
+				stopClock();
+				currentBeatInBar = 1;
+				triggerBeat();
+				beatTimer = window.setInterval(triggerBeat, getBeatDurationMs());
+			}
+
+			function renderSampleRow(sample) {
+				const row = document.createElement('div');
+				row.className = 'sample-row';
+
+				const name = document.createElement('div');
+				name.className = 'sample-name';
+				name.textContent = sample.file.name;
+
+				const enabledLabel = document.createElement('label');
+				enabledLabel.textContent = 'On';
+				const enabledInput = document.createElement('input');
+				enabledInput.type = 'checkbox';
+				enabledInput.checked = true;
+				enabledInput.addEventListener('change', function () {
+					sample.enabled = enabledInput.checked;
+					row.classList.toggle('muted', !sample.enabled);
+				});
+				enabledLabel.appendChild(enabledInput);
+
+				const rateLabel = document.createElement('label');
+				rateLabel.textContent = 'Plays/beat';
+				const rateInput = document.createElement('input');
+				rateInput.type = 'range';
+				rateInput.min = '0';
+				rateInput.max = '4';
+				rateInput.step = '0.1';
+				rateInput.value = String(sample.ratePerBeat);
+
+				const rateValue = document.createElement('span');
+				rateValue.textContent = Number(rateInput.value).toFixed(1);
+				rateInput.addEventListener('input', function () {
+					sample.ratePerBeat = Number(rateInput.value);
+					rateValue.textContent = sample.ratePerBeat.toFixed(1);
+				});
+
+				const beatTogglesWrap = document.createElement('div');
+				beatTogglesWrap.className = 'beat-toggles';
+				for (let i = 0; i < 4; i += 1) {
+					const stepButton = document.createElement('button');
+					stepButton.type = 'button';
+					stepButton.className = 'beat-toggle' + (sample.beatSteps[i] ? ' active' : '');
+					stepButton.textContent = String(i + 1);
+					stepButton.addEventListener('click', function () {
+						sample.beatSteps[i] = !sample.beatSteps[i];
+						stepButton.classList.toggle('active', sample.beatSteps[i]);
+					});
+					beatTogglesWrap.appendChild(stepButton);
+				}
+
+				const volumeLabel = document.createElement('label');
+				volumeLabel.textContent = 'Volume';
+				const volumeInput = document.createElement('input');
+				volumeInput.type = 'range';
+				volumeInput.min = '0';
+				volumeInput.max = '1';
+				volumeInput.step = '0.01';
+				volumeInput.value = String(sample.volume);
+				volumeInput.addEventListener('input', function () {
+					sample.volume = Number(volumeInput.value);
+				});
+				volumeLabel.appendChild(volumeInput);
+
+				const removeButton = document.createElement('button');
+				removeButton.type = 'button';
+				removeButton.textContent = 'Remove';
+				removeButton.addEventListener('click', function () {
+					const index = samples.indexOf(sample);
+					if (index >= 0) {
+						URL.revokeObjectURL(sample.url);
+						samples.splice(index, 1);
+					}
+					row.remove();
+				});
+
+				row.appendChild(name);
+				row.appendChild(enabledLabel);
+				row.appendChild(rateLabel);
+				row.appendChild(rateInput);
+				row.appendChild(rateValue);
+				row.appendChild(beatTogglesWrap);
+				row.appendChild(volumeLabel);
+				row.appendChild(removeButton);
+
+				sampleListEl.appendChild(row);
+			}
+
+			fileInput.addEventListener('change', function () {
+				const files = Array.from(fileInput.files || []);
+				files.forEach(function (file) {
+					const url = URL.createObjectURL(file);
+					const audio = new Audio(url);
+					audio.preload = 'auto';
+
+					const sample = {
+						file: file,
+						url: url,
+						audio: audio,
+						ratePerBeat: 0.7,
+						volume: 1,
+						enabled: true,
+						beatSteps: [true, true, true, true],
+					};
+
+					samples.push(sample);
+					renderSampleRow(sample);
+				});
+
+				fileInput.value = '';
+				setStatus(samples.length + ' sample(s) loaded.');
+			});
+
+			bpmInput.addEventListener('input', function () {
+				if (isRunning) {
+					startClock();
+				}
+			});
+
+			startBtn.addEventListener('click', function () {
+				if (samples.length === 0) {
+					setStatus('Upload at least one sample first.');
+					return;
+				}
+
+				isRunning = true;
+				startClock();
+				setStatus('Running at ' + (Number(bpmInput.value) || 120) + ' BPM.');
+			});
+
+			stopBtn.addEventListener('click', function () {
+				isRunning = false;
+				stopClock();
+				setStatus('Stopped.');
+			});
+		</script>
+	</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>legbone.net</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <link rel="shortcut icon" type="image/png" href="ok3.png">
+      <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.1.1/model-viewer.min.js"></script>
+
+  </head>
+  <body>
+   
+<header>
+  <div class="container">
+    <div id="branding">
+      <h1>legbone.net</h1>
+    </div>
+    <nav>
+
+        <li><a href="index.html">art</a></li>
+        <li><a href="communication.html">communication</a></li>
+      </ul>
+    </nav>
+  </div>
+
+</header>
+
+<section id="showcase">
+<section id="boxes">
+
+
+    <div class="box2">
+    <a class="embed-link" href="https://legbone.net/game.html" target="_blank" rel="noopener noreferrer" aria-label="Open yume site"></a>
+      <embed class="site-preview" src="https://legbone.net/game.html" style="width:130vw; height: 130vh; background-color: #ffffff; border-radius: 5px; zoom: 50%;">
+    </div>
+    
+    <div class="box2">
+    <a class="embed-link" href="https://leg-bone.github.io/yume/home.html" target="_blank" rel="noopener noreferrer" aria-label="Open yume site"></a>
+      <embed class="site-preview" src="https://leg-bone.github.io/yume/home.html" style="width:130vw; height: 130vh; background-color: #ffffff; border-radius: 5px; zoom: 50%;">
+    </div>
+    <div class="box2">
+    <a class="embed-link" href="https://leg-bone.github.io/classculture/home.html" target="_blank" rel="noopener noreferrer" aria-label="Open classculture site"></a>
+      <embed class="site-preview" src="https://leg-bone.github.io/classculture/home.html" style="width:130vw; height: 130vh; background-color: #ffffff; border-radius: 5px; zoom: 50%; ">
+    </div>
+    <div class="box2">
+      <a class="embed-link" href="http://www.pilat.ai/works.html" target="_blank" rel="noopener noreferrer" aria-label="Open pilat site"></a>
+      <embed class="site-preview" src="http://www.pilat.ai/works.html" style="width:130vw; height: 130vh; background-color: #ffffff; border-radius: 5px; zoom: 50%;">
+    </div>
+       <div class="box2">
+      <a class="embed-link" href="http://www.legbone.net/webdev.html" target="_blank" rel="noopener noreferrer" aria-label="Open pilat site"></a>
+      <embed class="site-preview" src="http://www.legbone.net/index.html" style="width:130vw; height: 130vh; background-color: #ffffff; border-radius: 5px; zoom: 50%;">
+    </div>
+
+</section>
+
+</section>
+  
+
+  <script>
+    (function () {
+      const overlay = document.getElementById('intro-overlay');
+      const introVideo = document.getElementById('intro-load-video');
+
+      function fadeIntroAway() {
+        if (!overlay || overlay.classList.contains('fade-out')) {
+          return;
+        }
+
+        overlay.classList.add('fade-out');
+        window.setTimeout(function () {
+          overlay.remove();
+        }, 1100);
+      }
+
+      if (!introVideo) {
+        fadeIntroAway();
+        return;
+      }
+
+      introVideo.addEventListener('ended', fadeIntroAway);
+      introVideo.addEventListener('error', fadeIntroAway);
+
+      introVideo.play().catch(function () {
+        fadeIntroAway();
+      });
+    })();
+
+
+  </script>
+  </body>
+</div>
+</html>
