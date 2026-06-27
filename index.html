@@ -87,8 +87,19 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
     (function () {
       const overlay = document.getElementById('intro-overlay');
       const introVideo = document.getElementById('intro-load-video');
+      const introLoadTimeoutMs = 3000;
+      let hasIntroStarted = false;
+      let loadTimeoutId = null;
+
+      function clearIntroTimeout() {
+        if (loadTimeoutId !== null) {
+          window.clearTimeout(loadTimeoutId);
+          loadTimeoutId = null;
+        }
+      }
 
       function fadeIntroAway() {
+        clearIntroTimeout();
         if (!overlay || overlay.classList.contains('fade-out')) {
           return;
         }
@@ -103,6 +114,22 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
         fadeIntroAway();
         return;
       }
+
+      loadTimeoutId = window.setTimeout(function () {
+        if (!hasIntroStarted) {
+          fadeIntroAway();
+        }
+      }, introLoadTimeoutMs);
+
+      introVideo.addEventListener('loadeddata', function () {
+        hasIntroStarted = true;
+        clearIntroTimeout();
+      }, { once: true });
+
+      introVideo.addEventListener('playing', function () {
+        hasIntroStarted = true;
+        clearIntroTimeout();
+      }, { once: true });
 
       introVideo.addEventListener('ended', fadeIntroAway);
       introVideo.addEventListener('error', fadeIntroAway);
