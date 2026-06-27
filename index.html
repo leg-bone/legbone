@@ -113,7 +113,21 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
     })();
 
     (function () {
+      const isTouchDevice = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+      if (!isTouchDevice) {
+        return;
+      }
+
       const viewers = document.querySelectorAll('#boxes model-viewer');
+      viewers.forEach(function (viewer) {
+        viewer.removeAttribute('camera-controls');
+        viewer.style.touchAction = 'pan-y';
+      });
+    })();
+
+    (function () {
+      const viewers = document.querySelectorAll('#boxes model-viewer');
+      const viewerStates = new Map();
       const hoverModelSrc1 = './3danimation_02.glb';
       const hoverModelSrc2 = './fabrication_01.glb';
       const hoverModelSrc3 = './3dmodeling_02.glb';
@@ -140,6 +154,10 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
       function toNumber(value, fallback) {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : fallback;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
       }
 
       function getEmissiveFactor(material) {
@@ -186,6 +204,7 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
 
       viewers.forEach(function (viewer, index) {
         const hoverModelSrc = hoverModelSrcByViewer[index] || '';
+        const viewerLink = viewer.closest('a');
         const state = {
           rafId: null,
           startMs: 0,
@@ -198,6 +217,8 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
           targetTheta: 0,
           targetPhi: 0,
           targetRadius: 1,
+          activeTouchId: null,
+          hasBaseOrbit: false,
           originalSrc: viewer.getAttribute('src') || '',
           materialData: []
         };
@@ -229,7 +250,13 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
           state.rafId = window.requestAnimationFrame(animate);
         }
 
-        viewer.addEventListener('mouseenter', function () {
+        function startHoverMode() {
+          viewerStates.forEach(function (entry, otherViewer) {
+            if (otherViewer !== viewer) {
+              entry.stopHoverMode();
+            }
+          });
+
           if (state.rafId !== null) {
             return;
           }
@@ -246,6 +273,7 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
           state.baseTheta = toNumber(orbit.theta, 0);
           state.basePhi = toNumber(orbit.phi, 0);
           state.baseRadius = toNumber(orbit.radius, 1);
+          state.hasBaseOrbit = true;
           state.currentTheta = state.baseTheta;
           state.currentPhi = state.basePhi;
           state.currentRadius = state.baseRadius;
@@ -254,9 +282,9 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
           state.targetRadius = state.baseRadius * hoverZoomFactor;
           state.startMs = performance.now();
           state.rafId = window.requestAnimationFrame(animate);
-        });
+        }
 
-        viewer.addEventListener('mousemove', function (event) {
+        function updateHoverFromPoint(clientX, clientY) {
           if (state.rafId === null) {
             return;
           }
@@ -266,15 +294,15 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
             return;
           }
 
-          const xNorm = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-          const yNorm = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+          const xNorm = clamp(((clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
+          const yNorm = clamp(((clientY - rect.top) / rect.height) * 2 - 1, -1, 1);
 
           state.targetTheta = state.baseTheta - (xNorm * maxThetaOffsetRad) - (yNorm * crossThetaFromYRad);
           state.targetPhi = state.basePhi - (yNorm * maxPhiOffsetRad) + (xNorm * crossPhiFromXRad);
           state.targetRadius = state.baseRadius * hoverZoomFactor;
-        });
+        }
 
-        viewer.addEventListener('mouseleave', function () {
+        function stopHoverMode() {
           if (state.rafId !== null) {
             window.cancelAnimationFrame(state.rafId);
             state.rafId = null;
@@ -284,11 +312,79 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
             viewer.setAttribute('src', state.originalSrc);
           }
 
-          viewer.cameraOrbit = state.baseTheta + 'rad ' + state.basePhi + 'rad ' + state.baseRadius + 'm';
+          if (state.hasBaseOrbit) {
+            viewer.cameraOrbit = state.baseTheta + 'rad ' + state.basePhi + 'rad ' + state.baseRadius + 'm';
+          }
 
           state.materialData.forEach(function (entry) {
             setEmissiveFactor(entry.material, entry.emissiveFactor);
           });
+
+          state.activeTouchId = null;
+        }
+
+        viewerStates.set(viewer, {
+          stopHoverMode: stopHoverMode
+        });
+
+        viewer.addEventListener('mouseenter', function () {
+          startHoverMode();
+        });
+
+        viewer.addEventListener('mousemove', function (event) {
+          updateHoverFromPoint(event.clientX, event.clientY);
+        });
+
+        viewer.addEventListener('touchstart', function (event) {
+          const touchPoint = event.changedTouches && event.changedTouches[0];
+          startHoverMode();
+          if (touchPoint) {
+            state.activeTouchId = touchPoint.identifier;
+            updateHoverFromPoint(touchPoint.clientX, touchPoint.clientY);
+          }
+        }, { passive: true });
+
+        viewer.addEventListener('touchmove', function (event) {
+          const touchPoint = Array.prototype.find.call(event.touches || [], function (touch) {
+            return touch.identifier === state.activeTouchId;
+          });
+          if (!touchPoint) {
+            return;
+          }
+          updateHoverFromPoint(touchPoint.clientX, touchPoint.clientY);
+        }, { passive: true });
+
+        viewer.addEventListener('touchend', function (event) {
+          const endedActiveTouch = Array.prototype.some.call(event.changedTouches || [], function (touch) {
+            return touch.identifier === state.activeTouchId;
+          });
+
+          if (endedActiveTouch) {
+            state.activeTouchId = null;
+          }
+        }, { passive: true });
+
+        if (viewerLink) {
+          viewerLink.addEventListener('focus', startHoverMode);
+          viewerLink.addEventListener('blur', stopHoverMode);
+        }
+
+        document.addEventListener('touchstart', function (event) {
+          if (viewer.contains(event.target)) {
+            return;
+          }
+          if (viewerLink && viewerLink.contains(event.target)) {
+            return;
+          }
+          stopHoverMode();
+        }, { passive: true });
+
+        viewer.addEventListener('touchcancel', function () {
+          stopHoverMode();
+        });
+
+        viewer.addEventListener('mouseleave', function () {
+          stopHoverMode();
         });
       });
     })();
