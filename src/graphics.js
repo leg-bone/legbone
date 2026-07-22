@@ -140,6 +140,39 @@ export const graphics = (function() {
       this._postScene = new THREE.Scene();
       this._postScene.add(postQuad);
 
+      this._pixelSize = 4.0;
+      this._pixelTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+      this._pixelPass = new THREE.ShaderMaterial({
+        uniforms: {
+          tDiffuse: {value: null},
+          resolution: {value: new THREE.Vector2(window.innerWidth, window.innerHeight)},
+          pixelSize: {value: this._pixelSize},
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D tDiffuse;
+          uniform vec2 resolution;
+          uniform float pixelSize;
+          varying vec2 vUv;
+
+          void main() {
+            vec2 pixelStep = vec2(pixelSize) / resolution;
+            vec2 snappedUV = pixelStep * floor(vUv / pixelStep);
+            gl_FragColor = texture2D(tDiffuse, snappedUV);
+          }
+        `,
+      });
+
+      const pixelQuad = new THREE.Mesh(postPlane, this._pixelPass);
+      this._pixelScene = new THREE.Scene();
+      this._pixelScene.add(pixelQuad);
+
       this._CreateLights();
 
       return true;
@@ -182,8 +215,10 @@ export const graphics = (function() {
       this._composer.setSize(window.innerWidth, window.innerHeight);
       this._targets[0].setSize(window.innerWidth, window.innerHeight);
       this._targets[1].setSize(window.innerWidth, window.innerHeight);
+      this._pixelTarget.setSize(window.innerWidth, window.innerHeight);
       this._bloomPass.setSize(window.innerWidth, window.innerHeight);
       this._fxassPass.setSize(window.innerWidth, window.innerHeight);
+      this._pixelPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
     }
 
     get Scene() {
@@ -233,8 +268,16 @@ export const graphics = (function() {
       this.scatterPass.uniforms.atmosphereRadius.value = 4100.0;
       this.scatterPass.uniformsNeedUpdate = true;
 
-      this._threejs.setRenderTarget(null);
+      this._threejs.setRenderTarget(this._pixelTarget);
+      this._threejs.clear();
       this._threejs.render(this._postScene, this._postCamera);
+
+      this._pixelPass.uniforms.tDiffuse.value = this._pixelTarget.texture;
+      this._pixelPass.uniforms.pixelSize.value = this._pixelSize;
+
+      this._threejs.setRenderTarget(null);
+      this._threejs.clear();
+      this._threejs.render(this._pixelScene, this._postCamera);
 
       this._stats.update();
     }

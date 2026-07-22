@@ -147,6 +147,8 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
 
       const viewers = document.querySelectorAll('#boxes model-viewer');
       viewers.forEach(function (viewer) {
+        viewer.removeAttribute('ar');
+        viewer.removeAttribute('ar-modes');
         viewer.removeAttribute('camera-controls');
         viewer.style.touchAction = 'pan-y';
       });
@@ -157,7 +159,7 @@ camera-orbit="360deg 90deg 1000m" field-of-view="30deg" camera-target="4.929e-10
       const viewerStates = new Map();
       const hoverModelSrc1 = './3danimation_02.glb';
       const hoverModelSrc2 = './fabrication_01.glb';
-      const hoverModelSrc3 = './3dmodeling_02.glb';
+      const hoverModelSrc3 = './testA.glb';
       const hoverModelSrc4 = './webdev.glb';
       const hoverModelSrc5 = './other.glb';
       const hoverModelSrc6 = './fabrication_01.glb';
