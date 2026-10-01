@@ -18,7 +18,7 @@ body{
   #showcase h1{
     margin-top: 44px;
   }
-}
+
 /*global*/
 .container0{
   width:80%;
@@ -108,7 +108,7 @@ header a:active{
 }
 
 #boxes .box {
-  color#8a2be2;
+  color:#8a2be2;
   float:left;
   text-align:center;
   width:30%;
@@ -154,3 +154,4 @@ header a:active{
     text-align:center;
     width:100%;
   }
+}

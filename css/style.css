@@ -201,6 +201,7 @@ align-self:center;
 justify-content:center;
   position:relative;
   display:flex;
+  flex-direction:column;
   align-items:center;
   justify-content:center;
   color:#42156d;
@@ -414,6 +415,20 @@ margin: 20px;
   font-size: 11px;
   text-align:  right;
   
+}
+
+#boxes figcaption {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: #FFFFFF;
+  width: 100%;
+  z-index: 3;
+}
+
+#boxes figcaption p{
+  font-size: 11px;
+  text-align: right;
 }
 
 #video .live-view-count {
